@@ -44,7 +44,7 @@ Testing | Jest + Supertest
 
 ## 📂 Folder Structure
 
-text
+```plain
 guai-backend/
 │
 ├── src/
@@ -109,6 +109,7 @@ guai-backend/
 ├── package.json
 ├── tsconfig.json
 └── README.md
+```
 
 ## 🚀 Setup & Run
 
