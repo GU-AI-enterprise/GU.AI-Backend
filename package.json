@@ -2,7 +2,7 @@
   "name": "gu.ai-backend",
   "version": "1.0.0",
   "description": "AI-powered Virtual Fashion Model Generation Platform for Vietnamese Market",
-  "main": "index.js",
+  "main": "dist/server.js",
   "scripts": {
     "dev": "nodemon src/server.ts",
     "build": "tsc",
