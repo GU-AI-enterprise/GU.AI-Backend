@@ -379,3 +379,32 @@ CREATE TABLE finetune_samples (
 
 CREATE INDEX idx_finetune_created_by ON finetune_samples(created_by);
 CREATE INDEX idx_finetune_status ON finetune_samples(status);
+-- =====================================================
+-- 20. collections
+-- =====================================================
+CREATE TABLE collections (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    name VARCHAR(255) NOT NULL,
+    cover_image_id UUID, -- References images(id), omitted foreign key for flexibility but could be added
+    image_count INT DEFAULT 0,
+    is_public BOOLEAN DEFAULT FALSE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX idx_collections_user_id ON collections(user_id);
+
+-- =====================================================
+-- 21. collection_items
+-- =====================================================
+CREATE TABLE collection_items (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    collection_id UUID NOT NULL REFERENCES collections(id) ON DELETE CASCADE,
+    image_id UUID NOT NULL REFERENCES images(id) ON DELETE CASCADE,
+    sort_order INT DEFAULT 0,
+    added_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(collection_id, image_id)
+);
+
+CREATE INDEX idx_collection_items_col_id ON collection_items(collection_id);
+

@@ -1,7 +1,7 @@
 services:
   - type: web
     name: guai-backend
-    runtime: node
+    installCommand: npm install --include=dev
     buildCommand: npm install && npm run build
     startCommand: npm run start
     envVars:
