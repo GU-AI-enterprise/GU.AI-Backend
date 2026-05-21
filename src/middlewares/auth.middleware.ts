@@ -2,9 +2,7 @@ import { Request, Response, NextFunction } from 'express';
 import { supabase } from '../config/supabase';
 
 // Định nghĩa lại request object để chứa thông tin user
-export interface AuthRequest extends Request {
-  user?: any;
-}
+export interface AuthRequest extends Request<any, any, any, any> { user?: any; }
 
 export const requireAuth = async (req: AuthRequest, res: Response, next: NextFunction): Promise<void> => {
   try {
