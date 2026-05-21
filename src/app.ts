@@ -5,6 +5,9 @@ import morgan from 'morgan';
 import cookieParser from 'cookie-parser';
 
 import authRoutes from './routes/auth.routes';
+import imageRoutes from './routes/image.routes';
+import collectionRoutes from './routes/collection.routes';
+import historyRoutes from './routes/history.routes';
 import { setupSwagger } from './config/swagger';
 
 const app: Application = express();
@@ -34,6 +37,9 @@ setupSwagger(app);
 
 // Routes
 app.use('/api/auth', authRoutes);
+app.use('/api/images', imageRoutes);
+app.use('/api/collections', collectionRoutes);
+app.use('/api/history', historyRoutes);
 
 // Health Check
 app.get('/health', (req: Request, res: Response) => {

@@ -1,10 +1,11 @@
-import { supabase } from '../config/supabase';
+import { supabaseAdmin, supabase } from '../config/supabase';
 
 export class UserService {
   // Lấy thông tin user profile từ Database
   public static async getUserProfile(userId: string) {
-    const { data, error } = await supabase
-      .from('user_profiles')
+    const client = supabaseAdmin || supabase; // Fallback sang supabase client thông thường nếu không cấu hình admin
+    const { data, error } = await client
+      .from('users')
       .select('*')
       .eq('id', userId)
       .single();
