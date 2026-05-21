@@ -1,5 +1,5 @@
 import { Request, Response } from 'express';
-import type { Provider } from '@supabase/supabase-js';
+type Provider = string; // Simplified provider type
 import { supabase } from '../config/supabase';
 
 export class AuthController {
