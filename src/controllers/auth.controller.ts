@@ -1,6 +1,6 @@
 import { Request, Response } from 'express';
+import type { Provider } from '@supabase/supabase-js';
 import { supabase } from '../config/supabase';
-import { Provider } from '@supabase/supabase-js';
 
 export class AuthController {
   // 1. Khởi tạo OAuth flow (Redirect client tới provider)
