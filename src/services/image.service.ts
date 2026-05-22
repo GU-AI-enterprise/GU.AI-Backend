@@ -1,8 +1,16 @@
 import { supabaseAdmin, supabase } from '../config/supabase';
 
 export class ImageService {
+  /**
+   * Return Supabase client for server‑side operations.
+   * When RLS is enabled we must use the Service Role key to bypass policies.
+   * If the service key is missing we throw an explicit error so the issue is visible.
+   */
   private static getClient() {
-    return supabaseAdmin || supabase;
+    if (!supabaseAdmin) {
+      throw new Error('Supabase Service Role key not configured – cannot bypass RLS.');
+    }
+    return supabaseAdmin;
   }
 
   // 1. Lưu bản ghi ảnh mới vào database

@@ -1,5 +1,5 @@
 import { Request, Response } from 'express';
-type Provider = string; // Simplified provider type
+import type { Provider } from '@supabase/auth-js';
 import { supabase } from '../config/supabase';
 
 export class AuthController {
@@ -7,12 +7,12 @@ export class AuthController {
   public async signInWithOAuth(req: Request, res: Response): Promise<void> {
     try {
       const provider = req.params.provider as Provider; // e.g. 'google', 'facebook', 'github'
-      
+
       const { data, error } = await supabase.auth.signInWithOAuth({
         provider,
         options: {
           // Bạn có thể redirect về frontend, hoặc redirect về /api/auth/callback để server xử lý
-          redirectTo: `${process.env.CLIENT_URL}/auth/callback`, 
+          redirectTo: `${process.env.CLIENT_URL}/auth/callback`,
         },
       });
 
@@ -24,10 +24,10 @@ export class AuthController {
       // Trả về URL để frontend tự chuyển hướng, hoặc server chuyển hướng luôn
       // redirect qua trình duyệt
       if (data.url) {
-         res.redirect(data.url);
-         return;
+        res.redirect(data.url);
+        return;
       }
-      
+
       res.status(200).json(data);
     } catch (err: any) {
       res.status(500).json({ error: 'Lỗi server', details: err.message });
@@ -42,8 +42,8 @@ export class AuthController {
     if (code) {
       const { data, error } = await supabase.auth.exchangeCodeForSession(String(code));
       if (error) {
-         res.redirect(`${process.env.CLIENT_URL}/login?error=OAuthFailed`);
-         return;
+        res.redirect(`${process.env.CLIENT_URL}/login?error=OAuthFailed`);
+        return;
       }
 
       // Có thể lưu refresh_token vào httpOnly cookie ở đây để bảo mật
@@ -92,7 +92,7 @@ export class AuthController {
   public async logout(req: Request, res: Response): Promise<void> {
     try {
       const accessToken = req.headers.authorization?.split(' ')[1];
-      
+
       if (accessToken) {
         // Cần truyền token vào cho supabase client hiểu đang log out ai
         await supabase.auth.signOut();

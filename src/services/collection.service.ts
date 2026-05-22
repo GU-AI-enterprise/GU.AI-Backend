@@ -2,7 +2,10 @@ import { supabaseAdmin, supabase } from '../config/supabase';
 
 export class CollectionService {
   private static getClient() {
-    return supabaseAdmin || supabase;
+    if (!supabaseAdmin) {
+      throw new Error('Supabase Service Role key not configured – cannot bypass RLS.');
+    }
+    return supabaseAdmin;
   }
 
   // 1. Tạo bộ sưu tập mới
