@@ -1,5 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
-import { supabase } from '../config/supabase';
+import { supabase, supabaseAdmin } from '../config/supabase';
 import { UserRole, isValidRole, hasRoleOrHigher } from '../types/role';
 
 export interface AuthRequest extends Request<any, any, any, any> {
@@ -8,6 +8,50 @@ export interface AuthRequest extends Request<any, any, any, any> {
     email: string;
     role: UserRole;
   };
+}
+
+// Helper để lấy hoặc tạo user record
+async function getOrCreateUserRecord(user: any) {
+  if (!supabaseAdmin) {
+    throw new Error('SUPABASE_SERVICE_ROLE_KEY not configured');
+  }
+
+  // Thử lấy user record
+  const { data: existingUser, error: fetchError } = await supabaseAdmin
+    .from('users')
+    .select('role, id')
+    .eq('id', user.id)
+    .single();
+
+  if (existingUser) {
+    return existingUser;
+  }
+
+  // Nếu không tìm thấy, tạo mới
+  if (fetchError?.code === 'PGRST116' || !existingUser) {
+    const { error: insertError } = await supabaseAdmin
+      .from('users')
+      .insert({
+        id: user.id,
+        email: user.email,
+        name: user.user_metadata?.full_name || user.user_metadata?.name || user.email?.split('@')[0] || null,
+        avatar_url: user.user_metadata?.avatar_url || user.user_metadata?.picture || null,
+        provider: user.app_metadata?.provider || 'email',
+        role: 'customer',
+        status: 'active',
+        current_credit: 0,
+        plan_type: 'free',
+      });
+
+    if (insertError) {
+      throw new Error(`Failed to create user record: ${insertError.message}`);
+    }
+
+    return { id: user.id, role: 'customer' };
+  }
+
+  const errorMessage = (fetchError as any)?.message || 'Unknown database error';
+  throw new Error(`Database error: ${errorMessage}`);
 }
 
 export const requireAuth = async (req: AuthRequest, res: Response, next: NextFunction): Promise<void> => {
@@ -28,26 +72,23 @@ export const requireAuth = async (req: AuthRequest, res: Response, next: NextFun
       return;
     }
 
-    // Fetch user role from database
-    const { data: userData, error: userError } = await supabase
-      .from('users')
-      .select('role')
-      .eq('id', user.id)
-      .single();
+    // Lấy hoặc tạo user record
+    const userRecord = await getOrCreateUserRecord(user);
 
-    if (userError || !userData || !isValidRole(userData.role)) {
+    if (!isValidRole(userRecord.role)) {
       res.status(401).json({ error: 'User role not found or invalid.' });
       return;
     }
 
-    // Gán user vào request để các controller phía sau sử dụng
+    // Gán user vào request
     req.user = {
       id: user.id,
       email: user.email || '',
-      role: userData.role as UserRole,
+      role: userRecord.role as UserRole,
     };
     next();
   } catch (err: any) {
+    console.error('Auth middleware error:', err);
     res.status(500).json({ error: 'Server Auth Error', details: err.message });
   }
 };

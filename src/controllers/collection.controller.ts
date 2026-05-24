@@ -125,5 +125,87 @@ export class CollectionController {
       sendError(res, 500, err.message);
     }
   }
+
+  // 6. Cập nhật bộ sưu tập
+  public async updateCollection(req: AuthRequest, res: Response): Promise<void> {
+    try {
+      const userId = req.user?.id;
+      const collectionId = req.params.id as string;
+      const { name, description, coverAssetId, visibility } = req.body;
+
+      if (!userId) {
+        sendError(res, 401, 'Không tìm thấy thông tin xác thực người dùng.');
+        return;
+      }
+      if (!collectionId) {
+        sendError(res, 400, 'Thiếu thông số mã bộ sưu tập (id).');
+        return;
+      }
+
+      const updated = await CollectionService.updateCollection(collectionId, userId, {
+        name,
+        description,
+        coverAssetId,
+        visibility,
+      });
+
+      sendSuccess(res, {
+        message: 'Cập nhật bộ sưu tập thành công.',
+        data: updated,
+      });
+    } catch (err: any) {
+      sendError(res, 500, err.message);
+    }
+  }
+
+  // 7. Xóa asset khỏi bộ sưu tập
+  public async removeCollectionItem(req: AuthRequest, res: Response): Promise<void> {
+    try {
+      const collectionId = req.params.id as string;
+      const { assetId } = req.body;
+
+      if (!collectionId) {
+        sendError(res, 400, 'Thiếu thông số mã bộ sưu tập (id).');
+        return;
+      }
+      if (!assetId) {
+        sendError(res, 400, 'Thiếu thông số mã ảnh (assetId).');
+        return;
+      }
+
+      const result = await CollectionService.removeAssetFromCollection(collectionId, assetId);
+      sendSuccess(res, {
+        message: 'Xóa ảnh khỏi bộ sưu tập thành công.',
+        data: result,
+      });
+    } catch (err: any) {
+      sendError(res, 500, err.message);
+    }
+  }
+
+  // 8. Lấy chi tiết bộ sưu tập
+  public async getCollectionById(req: AuthRequest, res: Response): Promise<void> {
+    try {
+      const userId = req.user?.id;
+      const collectionId = req.params.id as string;
+
+      if (!userId) {
+        sendError(res, 401, 'Không tìm thấy thông tin xác thực người dùng.');
+        return;
+      }
+      if (!collectionId) {
+        sendError(res, 400, 'Thiếu thông số mã bộ sưu tập (id).');
+        return;
+      }
+
+      const collection = await CollectionService.getCollectionById(collectionId, userId);
+      sendSuccess(res, {
+        message: 'Lấy chi tiết bộ sưu tập thành công.',
+        data: collection,
+      });
+    } catch (err: any) {
+      sendError(res, 500, err.message);
+    }
+  }
 }
 export const collectionController = new CollectionController();

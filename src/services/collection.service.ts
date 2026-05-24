@@ -136,4 +136,69 @@ export class CollectionService {
 
     return data;
   }
+
+  // 6. Cập nhật bộ sưu tập
+  public static async updateCollection(collectionId: string, userId: string, params: {
+    name?: string;
+    description?: string;
+    coverAssetId?: string;
+    visibility?: 'private' | 'public';
+  }) {
+    const client = this.getClient();
+    const { data, error } = await client
+      .from('collections')
+      .update({
+        name: params.name,
+        description: params.description,
+        cover_asset_id: params.coverAssetId,
+        visibility: params.visibility,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', collectionId)
+      .eq('user_id', userId)
+      .select()
+      .single();
+
+    if (error) {
+      throw new Error(`Lỗi khi cập nhật bộ sưu tập: ${error.message}`);
+    }
+
+    return data;
+  }
+
+  // 7. Xóa asset khỏi bộ sưu tập
+  public static async removeAssetFromCollection(collectionId: string, assetId: string) {
+    const client = this.getClient();
+    const { error } = await client
+      .from('collection_assets')
+      .delete()
+      .eq('collection_id', collectionId)
+      .eq('asset_id', assetId);
+
+    if (error) {
+      throw new Error(`Lỗi khi xóa asset khỏi bộ sưu tập: ${error.message}`);
+    }
+
+    return { success: true };
+  }
+
+  // 8. Lấy chi tiết bộ sưu tập
+  public static async getCollectionById(collectionId: string, userId: string) {
+    const client = this.getClient();
+    const { data, error } = await client
+      .from('collections')
+      .select(`
+        *,
+        cover_asset:assets!cover_asset_id(id, url, thumbnail_url)
+      `)
+      .eq('id', collectionId)
+      .eq('user_id', userId)
+      .single();
+
+    if (error) {
+      throw new Error(`Lỗi khi lấy chi tiết bộ sưu tập: ${error.message}`);
+    }
+
+    return data;
+  }
 }

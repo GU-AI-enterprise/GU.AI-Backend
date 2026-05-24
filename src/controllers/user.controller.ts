@@ -1,6 +1,7 @@
 import { Response } from 'express';
-import { supabase } from '../config/supabase';
+import { supabase, supabaseAdmin } from '../config/supabase';
 import { AuthRequest } from '../middlewares/auth.middleware';
+import { UserService } from '../services/user.service';
 
 export class UserController {
   // Get current user profile
@@ -11,17 +12,7 @@ export class UserController {
         return;
       }
 
-      const { data: user, error } = await supabase
-        .from('users')
-        .select('*')
-        .eq('id', req.user.id)
-        .single();
-
-      if (error) {
-        res.status(404).json({ error: 'User not found' });
-        return;
-      }
-
+      const user = await UserService.getUserProfile(req.user.id);
       res.status(200).json(user);
     } catch (err: any) {
       res.status(500).json({ error: 'Server error', details: err.message });
@@ -37,23 +28,7 @@ export class UserController {
       }
 
       const { name, avatar_url } = req.body;
-
-      const { data: user, error } = await supabase
-        .from('users')
-        .update({
-          name: name || undefined,
-          avatar_url: avatar_url || undefined,
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', req.user.id)
-        .select()
-        .single();
-
-      if (error) {
-        res.status(400).json({ error: error.message });
-        return;
-      }
-
+      const user = await UserService.updateUserProfile(req.user.id, { name, avatar_url });
       res.status(200).json(user);
     } catch (err: any) {
       res.status(500).json({ error: 'Server error', details: err.message });
@@ -128,8 +103,13 @@ export class UserController {
         return;
       }
 
-      // Delete user from database
-      const { error: deleteError } = await supabase
+      // Delete user from database using admin client
+      if (!supabaseAdmin) {
+        res.status(500).json({ error: 'Supabase admin not configured' });
+        return;
+      }
+
+      const { error: deleteError } = await supabaseAdmin
         .from('users')
         .delete()
         .eq('id', req.user.id);

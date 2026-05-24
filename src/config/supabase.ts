@@ -12,6 +12,11 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
 // Khởi tạo Supabase Client cho các tác vụ Admin (Bỏ qua RLS)
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-export const supabaseAdmin = supabaseServiceKey 
-  ? createClient(supabaseUrl, supabaseServiceKey) 
+
+if (!supabaseServiceKey) {
+  console.warn('⚠️  SUPABASE_SERVICE_ROLE_KEY not configured in .env - Admin operations will fail');
+}
+
+export const supabaseAdmin = supabaseServiceKey
+  ? createClient(supabaseUrl, supabaseServiceKey)
   : null;
