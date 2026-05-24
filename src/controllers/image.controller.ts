@@ -23,7 +23,7 @@ export class ImageController {
     }
   }
 
-  // 2. Thêm một bản ghi ảnh mới (gọi sau khi upload thành công ở client)
+  // 2. Thêm một bản ghi asset mới
   public async createImage(req: AuthRequest, res: Response): Promise<void> {
     try {
       const userId = req.user?.id;
@@ -32,7 +32,7 @@ export class ImageController {
         return;
       }
 
-      const { fileUrl, thumbnailUrl, type, fileSize, jobId } = req.body;
+      const { fileUrl, thumbnailUrl, type, category, fileSize, fileName, mimeType, width, height } = req.body;
       if (!fileUrl) {
         sendError(res, 400, 'Thiếu thông số bắt buộc fileUrl.');
         return;
@@ -43,12 +43,16 @@ export class ImageController {
         fileUrl,
         thumbnailUrl,
         type,
+        category,
         fileSize,
-        jobId,
+        fileName,
+        mimeType,
+        width,
+        height
       });
 
       sendSuccess(res, {
-        statusCode: 211,
+        statusCode: 201,
         message: 'Lưu bản ghi ảnh thành công.',
         data: image,
       });
@@ -57,7 +61,7 @@ export class ImageController {
     }
   }
 
-  // 3. Xóa mềm ảnh
+  // 3. Xóa ảnh
   public async deleteImage(req: AuthRequest, res: Response): Promise<void> {
     try {
       const userId = req.user?.id;
@@ -76,58 +80,6 @@ export class ImageController {
       sendSuccess(res, {
         message: 'Xóa ảnh thành công.',
         data: deletedImage,
-      });
-    } catch (err: any) {
-      sendError(res, 500, err.message);
-    }
-  }
-
-  // 4. Khởi tạo lô tải lên hàng loạt
-  public async createBatchUpload(req: AuthRequest, res: Response): Promise<void> {
-    try {
-      const userId = req.user?.id;
-      const { totalFiles } = req.body;
-
-      if (!userId) {
-        sendError(res, 401, 'Không tìm thấy thông tin xác thực người dùng.');
-        return;
-      }
-      if (typeof totalFiles !== 'number' || totalFiles <= 0) {
-        sendError(res, 400, 'Số lượng file tải lên không hợp lệ.');
-        return;
-      }
-
-      const batch = await ImageService.createBatchUpload(userId, totalFiles);
-      sendSuccess(res, {
-        message: 'Khởi tạo lô tải lên hàng loạt thành công.',
-        data: batch,
-      });
-    } catch (err: any) {
-      sendError(res, 500, err.message);
-    }
-  }
-
-  // 5. Cập nhật tiến độ tải lên hàng loạt
-  public async updateBatchUpload(req: AuthRequest, res: Response): Promise<void> {
-    try {
-      const batchId = req.params.id as string;
-      const { uploadedCount, failedCount, status, errorLog } = req.body;
-
-      if (!batchId) {
-        sendError(res, 400, 'Thiếu thông số mã lô tải (id).');
-        return;
-      }
-
-      const updatedBatch = await ImageService.updateBatchUpload(batchId, {
-        uploadedCount,
-        failedCount,
-        status,
-        errorLog,
-      });
-
-      sendSuccess(res, {
-        message: 'Cập nhật lô tải lên thành công.',
-        data: updatedBatch,
       });
     } catch (err: any) {
       sendError(res, 500, err.message);

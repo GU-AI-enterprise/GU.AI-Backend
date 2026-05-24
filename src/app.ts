@@ -21,13 +21,30 @@ app.use(
     contentSecurityPolicy: false, // Tắt CSP để tránh chặn Swagger UI assets
   })
 );
-app.use(morgan('dev'));
+// Skip logging OPTIONS preflight requests
+app.use(morgan('dev', {
+  skip: (req) => req.method === 'OPTIONS',
+}));
 
-// CORS config
-const clientUrl = process.env.CLIENT_URL || 'http://localhost:3000';
+// CORS config – CLIENT_URL có thể là danh sách cách nhau bởi dấu phẩy
+// Ví dụ: https://guai.vercel.app,https://www.guai.app
+const allowedOrigins: string[] = (
+  process.env.CLIENT_URL || 'http://localhost:3000'
+)
+  .split(',')
+  .map((s) => s.trim())
+  .filter(Boolean);
+
 app.use(
   cors({
-    origin: clientUrl,
+    origin: (origin, callback) => {
+      // Cho phép server-to-server (không có origin) hoặc origin nằm trong whitelist
+      if (!origin || allowedOrigins.includes(origin)) {
+        callback(null, true);
+      } else {
+        callback(new Error(`CORS: origin "${origin}" không được phép.`));
+      }
+    },
     credentials: true,
   })
 );

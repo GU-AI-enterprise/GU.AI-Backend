@@ -38,7 +38,7 @@ export class HistoryService {
       .from('transactions')
       .select(`
         *,
-        package:credit_packages(name, credits)
+        package:credit_packages(name, credit_amount)
       `)
       .eq('user_id', userId)
       .order('created_at', { ascending: false })

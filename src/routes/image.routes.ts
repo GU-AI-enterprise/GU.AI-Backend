@@ -11,7 +11,4 @@ router.get('/', imageController.getImages);
 router.post('/', imageController.createImage);
 router.delete('/:id', imageController.deleteImage);
 
-router.post('/batch', imageController.createBatchUpload);
-router.put('/batch/:id', imageController.updateBatchUpload);
-
 export default router;

@@ -32,7 +32,7 @@ export class CollectionController {
         return;
       }
 
-      const { name, coverImageId, isPublic } = req.body;
+      const { name, description, coverAssetId, visibility } = req.body;
       if (!name) {
         sendError(res, 400, 'Thiếu thông số tên bộ sưu tập (name).');
         return;
@@ -41,12 +41,13 @@ export class CollectionController {
       const collection = await CollectionService.createCollection({
         userId,
         name,
-        coverImageId,
-        isPublic,
+        description,
+        coverAssetId,
+        visibility,
       });
 
       sendSuccess(res, {
-        statusCode: 211,
+        statusCode: 201,
         message: 'Tạo bộ sưu tập thành công.',
         data: collection,
       });
@@ -59,18 +60,18 @@ export class CollectionController {
   public async addCollectionItem(req: AuthRequest, res: Response): Promise<void> {
     try {
       const collectionId = req.params.id as string;
-      const { imageId } = req.body;
+      const { assetId } = req.body;
 
       if (!collectionId) {
         sendError(res, 400, 'Thiếu thông số mã bộ sưu tập (id).');
         return;
       }
-      if (!imageId) {
-        sendError(res, 400, 'Thiếu thông số mã ảnh (imageId).');
+      if (!assetId) {
+        sendError(res, 400, 'Thiếu thông số mã ảnh (assetId).');
         return;
       }
 
-      const item = await CollectionService.addImageToCollection(collectionId, imageId);
+      const item = await CollectionService.addAssetToCollection(collectionId, assetId);
       sendSuccess(res, {
         message: 'Thêm ảnh vào bộ sưu tập thành công.',
         data: item,
