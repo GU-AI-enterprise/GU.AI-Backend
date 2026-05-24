@@ -9,7 +9,7 @@ CREATE TABLE public.users (
   name varchar,
   avatar_url text,
   provider varchar,
-  role varchar NOT NULL DEFAULT 'customer' CHECK (role IN ('customer','paid_customer','staff','admin')),
+  role varchar NOT NULL DEFAULT 'customer' CHECK (role IN ('customer','staff','admin')),
   status varchar NOT NULL DEFAULT 'active' CHECK (status IN ('active','banned')),
   current_credit integer NOT NULL DEFAULT 0,
   plan_type varchar NOT NULL DEFAULT 'free' CHECK (plan_type IN ('free','pro','business')),
@@ -269,7 +269,7 @@ CREATE TABLE public.support_notes (
 CREATE TABLE public.activity_logs (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id uuid REFERENCES public.users(id) ON DELETE CASCADE,
-  actor_role varchar CHECK (actor_role IN ('customer','paid_customer','staff','admin','system')),
+  actor_role varchar CHECK (actor_role IN ('customer','staff','admin','system')),
   action varchar NOT NULL,
   target_type varchar CHECK (target_type IN ('user','asset','ai_job','transaction')),
   target_id uuid,
