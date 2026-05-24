@@ -8,6 +8,7 @@ import authRoutes from './routes/auth.routes';
 import imageRoutes from './routes/image.routes';
 import collectionRoutes from './routes/collection.routes';
 import historyRoutes from './routes/history.routes';
+import userRoutes from './routes/user.routes';
 import { setupSwagger } from './config/swagger';
 
 const app: Application = express();
@@ -57,6 +58,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/images', imageRoutes);
 app.use('/api/collections', collectionRoutes);
 app.use('/api/history', historyRoutes);
+app.use('/api/users', userRoutes);
 
 // Health Check
 app.get('/health', (req: Request, res: Response) => {
