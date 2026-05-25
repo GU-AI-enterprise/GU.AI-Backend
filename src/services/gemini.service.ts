@@ -43,7 +43,7 @@ class GeminiService {
       client: new GoogleGenerativeAI(key),
     }));
 
-    this.modelName = process.env.GEMINI_MODEL || 'gemini-2.0-flash';
+    this.modelName = process.env.GEMINI_MODEL || 'gemini-2.5-flash-image';
   }
 
   private getModel(client: GoogleGenerativeAI): GenerativeModel {
