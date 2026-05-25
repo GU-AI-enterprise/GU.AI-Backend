@@ -34,20 +34,31 @@ const allowedOrigins: string[] = (
   process.env.CLIENT_URL || 'http://localhost:3000'
 )
   .split(',')
-  .map((s) => s.trim())
+  .map((s) => s.trim().replace(/\/$/, '')) // Loại bỏ dấu slash / ở cuối nếu có
   .filter(Boolean);
 
 app.use(
   cors({
     origin: (origin, callback) => {
-      // Cho phép server-to-server (không có origin) hoặc origin nằm trong whitelist
-      if (!origin || allowedOrigins.includes(origin)) {
+      // Chuẩn hóa origin đầu vào (loại bỏ slash cuối)
+      const cleanOrigin = origin ? origin.trim().replace(/\/$/, '') : '';
+      
+      // Cho phép server-to-server (không có origin), localhost trong môi trường dev, hoặc origin nằm trong whitelist
+      if (
+        !origin || 
+        process.env.NODE_ENV !== 'production' || 
+        allowedOrigins.includes(cleanOrigin) ||
+        allowedOrigins.some(allowed => cleanOrigin.startsWith(allowed))
+      ) {
         callback(null, true);
       } else {
-        callback(new Error(`CORS: origin "${origin}" không được phép.`));
+        console.warn(`CORS blocked for origin: ${origin}. Allowed:`, allowedOrigins);
+        callback(new Error('Not allowed by CORS'));
       }
     },
     credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept'],
   })
 );
 
