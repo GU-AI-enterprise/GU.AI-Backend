@@ -1,3 +1,4 @@
+//disable eslint
 {
   "compilerOptions": {
     "target": "es2022",
@@ -11,6 +12,11 @@
     "resolveJsonModule": true,
     "moduleResolution": "bundler"
   },
-  "include": ["src/**/*"],
-  "exclude": ["node_modules", "dist"]
+  "include": [
+    "src/**/*"
+  ],
+  "exclude": [
+    "node_modules",
+    "dist"
+  ]
 }

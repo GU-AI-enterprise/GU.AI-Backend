@@ -44,16 +44,24 @@ export class SocketService {
    * Broadcast message to a conversation
    */
   static broadcastToConversation(conversationId: string, payload: MessagePayload): void {
-    const io = getIO();
-    io.to(`conversation:${conversationId}`).emit('message', payload);
+    try {
+      const io = getIO();
+      io.to(`conversation:${conversationId}`).emit('message', payload);
+    } catch (error) {
+      console.warn('Socket.IO not available for conversation emit.');
+    }
   }
 
   /**
    * Send monitoring data to admin users
    */
   static sendMonitoringData(payload: MonitoringPayload): void {
-    const io = getIO();
-    io.to('admins').emit('monitoring', payload);
+    try {
+      const io = getIO();
+      io.to('admins').emit('monitoring', payload);
+    } catch (error) {
+      console.warn('Socket.IO not available for monitoring emit.');
+    }
   }
 
   /**
