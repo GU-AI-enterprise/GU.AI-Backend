@@ -38,10 +38,13 @@ export class SupportController {
     return true;
   }
 
-  private getSenderType(role: UserRole): 'user' | 'staff' | 'admin' {
-    if (role === UserRole.ADMIN) return 'admin';
-    if (role === UserRole.STAFF) return 'staff';
-    return 'user';
+  private getSenderType(role: UserRole | string): 'customer' | 'staff' | 'admin' | 'bot' {
+    const roleStr = String(role).toLowerCase().trim();
+    console.log('[SupportController] getSenderType input:', role, 'normalized:', roleStr);
+    if (roleStr === 'admin' || roleStr === UserRole.ADMIN) return 'admin';
+    if (roleStr === 'staff' || roleStr === UserRole.STAFF) return 'staff';
+    // Database constraint yêu cầu 'customer' thay vì 'user'
+    return 'customer';
   }
 
   public async getMyConversation(req: AuthRequest, res: Response): Promise<void> {
@@ -191,19 +194,41 @@ export class SupportController {
         return;
       }
 
-      const senderType = this.getSenderType(req.user.role);
+      let senderType = this.getSenderType(req.user.role);
+      const validSenderTypes = ['customer', 'staff', 'admin', 'bot', 'system'];
+      
+      // Đảm bảo sender_type luôn hợp lệ
+      if (!validSenderTypes.includes(senderType)) {
+        console.error('[SupportController] Invalid senderType calculated:', senderType, 'from role:', req.user.role);
+        senderType = 'customer'; // fallback an toàn
+      }
+      
       const now = new Date().toISOString();
+
+      console.log('[SupportController] sendMessage:', {
+        userId: req.user.id,
+        userRole: req.user.role,
+        userRoleType: typeof req.user.role,
+        senderType,
+        conversationId
+      });
+
+      const insertPayload = {
+        conversation_id: conversationId,
+        sender_id: req.user.id,
+        sender_type: senderType,
+        content: content.trim(),
+        message_type: 'text',
+        is_read: false,
+      };
+
+      console.log('[SupportController] Insert payload:', insertPayload);
+      console.log('[SupportController] sender_type value:', JSON.stringify(insertPayload.sender_type));
+      console.log('[SupportController] sender_type length:', insertPayload.sender_type.length);
 
       const { data: message, error: insertError } = await supabaseAdmin!
         .from('support_messages')
-        .insert({
-          conversation_id: conversationId,
-          sender_id: req.user.id,
-          sender_type: senderType,
-          content: content.trim(),
-          message_type: 'text',
-          is_read: false,
-        })
+        .insert(insertPayload)
         .select(SUPPORT_MESSAGE_SELECT)
         .single();
 
@@ -214,7 +239,7 @@ export class SupportController {
         updated_at: now,
       };
 
-      if (senderType !== 'user' && !conversation.assigned_staff_id) {
+      if (senderType !== 'customer' && !conversation.assigned_staff_id) {
         updates.assigned_staff_id = req.user.id;
         updates.status = 'pending';
       }
