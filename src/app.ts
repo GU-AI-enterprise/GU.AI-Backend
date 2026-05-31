@@ -13,6 +13,7 @@ import aiRoutes from './routes/ai.routes';
 import supportRoutes from './routes/support.routes';
 import adminRoutes from './routes/admin.routes';
 import { setupSwagger } from './config/swagger';
+import { globalLimiter, authLimiter, aiLimiter, supportLimiter } from './middlewares/rateLimit.middleware';
 
 const app: Application = express();
 
@@ -67,15 +68,18 @@ app.use(
 // Setup Swagger UI at /api-docs
 setupSwagger(app);
 
+// Global rate limiter (must come before routes)
+app.use(globalLimiter);
+
 // Routes
-app.use('/api/auth', authRoutes);
-app.use('/api/images', imageRoutes);
-app.use('/api/collections', collectionRoutes);
-app.use('/api/history', historyRoutes);
-app.use('/api/users', userRoutes);
-app.use('/api/ai', aiRoutes);
-app.use('/api/support', supportRoutes);
-app.use('/api/admin', adminRoutes);
+app.use('/api/auth',    authLimiter,    authRoutes);
+app.use('/api/images',                  imageRoutes);
+app.use('/api/collections',             collectionRoutes);
+app.use('/api/history',                 historyRoutes);
+app.use('/api/users',                   userRoutes);
+app.use('/api/ai',      aiLimiter,      aiRoutes);
+app.use('/api/support', supportLimiter, supportRoutes);
+app.use('/api/admin',                   adminRoutes);
 
 // Health Check
 app.get('/health', (req: Request, res: Response) => {
