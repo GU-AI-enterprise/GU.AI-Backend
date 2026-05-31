@@ -102,7 +102,7 @@ export class CreditService {
     type: 'try_on' | 'generate' | 'edit' | 'remove_bg' | 'upscale';
     prompt?: string;
     creditCost: number;
-    provider: 'nano_banana' | 'remove_bg';
+    provider: 'nano_banana' | 'remove_bg' | 'fashn';
     inputParams?: any;
   }): Promise<AIJobCreateResult> {
     const client = this.getClient();

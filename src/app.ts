@@ -11,6 +11,7 @@ import historyRoutes from './routes/history.routes';
 import userRoutes from './routes/user.routes';
 import aiRoutes from './routes/ai.routes';
 import supportRoutes from './routes/support.routes';
+import adminRoutes from './routes/admin.routes';
 import { setupSwagger } from './config/swagger';
 
 const app: Application = express();
@@ -74,6 +75,7 @@ app.use('/api/history', historyRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/ai', aiRoutes);
 app.use('/api/support', supportRoutes);
+app.use('/api/admin', adminRoutes);
 
 // Health Check
 app.get('/health', (req: Request, res: Response) => {

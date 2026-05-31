@@ -1,27 +1,29 @@
 import { Response } from 'express';
 import { AuthRequest } from '../middlewares/auth.middleware';
-import { geminiService } from '../services/gemini.service';
+import { fashnService, TryOnCategory, TryOnMode } from '../services/fashn.service';
 import { CreditService } from '../services/credit.service';
 import { StorageService } from '../services/storage.service';
 import { sendSuccess, sendError } from '../utils/response';
 
+const VALID_CATEGORIES: TryOnCategory[] = ['tops', 'bottoms', 'one-pieces'];
+const VALID_MODES: TryOnMode[] = ['quality', 'balanced', 'speed'];
+
 export class AIController {
   /**
    * POST /api/ai/test
-   * Test tất cả 4 API key xem key nào còn hoạt động.
+   * Kiểm tra kết nối tới Fashn.ai với API key hiện tại.
    */
-  public async testKeys(req: AuthRequest, res: Response): Promise<void> {
+  public async testConnection(req: AuthRequest, res: Response): Promise<void> {
     try {
-      const results = await geminiService.testAllKeys();
-      const allFailed = results.every((r) => !r.ok);
-
+      const result = await fashnService.testConnection();
       sendSuccess(res, {
-        message: allFailed
-          ? 'Tất cả key đều lỗi — kiểm tra lại API key hoặc quota.'
-          : `Test xong. ${results.filter((r) => r.ok).length}/${results.length} key hoạt động.`,
+        message: result.ok
+          ? 'Kết nối Fashn.ai thành công.'
+          : `Kết nối Fashn.ai thất bại: ${result.error}`,
         data: {
-          keyCount: geminiService.getConfiguredKeyCount(),
-          results,
+          ok: result.ok,
+          configured: fashnService.isConfigured(),
+          error: result.error,
         },
       });
     } catch (err: any) {
@@ -30,11 +32,33 @@ export class AIController {
   }
 
   /**
-   * POST /api/ai/generate
-   * Generate image từ text prompt.
-   * Body: { prompt: string, aspectRatio?: '1:1' | '16:9' | '9:16' | '4:3' | '3:4', imageSize?: '1K' | '2K' | '4K' }
+   * GET /api/ai/credits
+   * Trả về số credits còn lại trên tài khoản Fashn.ai.
    */
-  public async generateImage(req: AuthRequest, res: Response): Promise<void> {
+  public async getCredits(req: AuthRequest, res: Response): Promise<void> {
+    try {
+      const credits = await fashnService.getCredits();
+      sendSuccess(res, {
+        message: 'Lấy credits Fashn.ai thành công.',
+        data: credits,
+      });
+    } catch (err: any) {
+      console.error('[AIController.getCredits]', err.message);
+      sendError(res, 500, err.message);
+    }
+  }
+
+  /**
+   * POST /api/ai/try-on
+   * Virtual try-on: ghép quần áo lên ảnh người mẫu.
+   *
+   * Chấp nhận multipart/form-data với:
+   *   - modelImage  (file)  HOẶC  modelImageUrl  (string trong body)
+   *   - garmentImage (file) HOẶC  garmentImageUrl (string trong body)
+   *   - category: 'tops' | 'bottoms' | 'one-pieces'
+   *   - mode?:     'quality' | 'balanced' | 'speed'  (mặc định: 'balanced')
+   */
+  public async tryOn(req: AuthRequest, res: Response): Promise<void> {
     let jobId: string | undefined;
     const CREDIT_COST = 10;
 
@@ -45,201 +69,103 @@ export class AIController {
         return;
       }
 
-      const { prompt, aspectRatio, imageSize } = req.body;
-      if (!prompt || typeof prompt !== 'string') {
-        sendError(res, 400, 'Thiếu hoặc sai định dạng prompt.');
+      // ── Lấy category & mode ──────────────────────────────────────────────
+      const category: TryOnCategory = req.body.category;
+      const mode: TryOnMode = req.body.mode || 'balanced';
+
+      if (!category || !VALID_CATEGORIES.includes(category)) {
+        sendError(res, 400, `category phải là một trong: ${VALID_CATEGORIES.join(', ')}.`);
+        return;
+      }
+      if (!VALID_MODES.includes(mode)) {
+        sendError(res, 400, `mode phải là một trong: ${VALID_MODES.join(', ')}.`);
         return;
       }
 
-      // 1. Check credit
+      // ── Xây dựng model_image và garment_image ────────────────────────────
+      const files = (req as any).files as Record<string, Express.Multer.File[]> | undefined;
+
+      const modelImageFile = files?.['modelImage']?.[0];
+      const garmentImageFile = files?.['garmentImage']?.[0];
+
+      const modelImageUrl: string | undefined = req.body.modelImageUrl;
+      const garmentImageUrl: string | undefined = req.body.garmentImageUrl;
+
+      // Ưu tiên file upload, nếu không có thì dùng URL
+      const modelImage = modelImageFile
+        ? `data:${modelImageFile.mimetype};base64,${modelImageFile.buffer.toString('base64')}`
+        : modelImageUrl;
+
+      const garmentImage = garmentImageFile
+        ? `data:${garmentImageFile.mimetype};base64,${garmentImageFile.buffer.toString('base64')}`
+        : garmentImageUrl;
+
+      if (!modelImage) {
+        sendError(res, 400, 'Cần cung cấp modelImage (file) hoặc modelImageUrl.');
+        return;
+      }
+      if (!garmentImage) {
+        sendError(res, 400, 'Cần cung cấp garmentImage (file) hoặc garmentImageUrl.');
+        return;
+      }
+
+      // ── Kiểm tra credit ──────────────────────────────────────────────────
       const creditCheck = await CreditService.checkCredit(userId, CREDIT_COST);
       if (!creditCheck.ok) {
         sendError(res, 402, `Credit không đủ. Cần ${CREDIT_COST}, hiện có ${creditCheck.userCredit}.`);
         return;
       }
 
-      // 2. Tạo AI job
+      // ── Tạo AI job ───────────────────────────────────────────────────────
       const job = await CreditService.createAIJob({
         userId,
-        type: 'generate',
-        prompt,
+        type: 'try_on',
+        prompt: `Try-on: category=${category}, mode=${mode}`,
         creditCost: CREDIT_COST,
-        provider: 'nano_banana',
-        inputParams: { aspectRatio, imageSize },
+        provider: 'fashn',
+        inputParams: { category, mode },
       });
       jobId = job.jobId;
 
-      // 3. Gọi Gemini
-      const result = await geminiService.generateImage({
-        prompt,
-        aspectRatio,
-        imageSize,
-      });
+      // ── Gọi Fashn.ai ─────────────────────────────────────────────────────
+      const result = await fashnService.tryOn({ modelImage, garmentImage, category, mode });
 
-      // 4. Upload ảnh output lên storage
-      const imageBuffer = Buffer.from(result.base64Image, 'base64');
-      const fileName = `generated_${Date.now()}.png`;
-      const publicUrl = await StorageService.uploadBuffer(
-        imageBuffer,
-        fileName,
-        result.mimeType,
-        userId
-      );
+      // ── Tải ảnh output về và upload lên Supabase Storage ─────────────────
+      const outputFetch = await fetch(result.outputUrl);
+      if (!outputFetch.ok) throw new Error('Không tải được ảnh output từ Fashn.');
+      const outputBuffer = Buffer.from(await outputFetch.arrayBuffer());
+      const fileName = `tryon_${Date.now()}.png`;
 
-      // 5. Lưu asset record
+      const publicUrl = await StorageService.uploadBuffer(outputBuffer, fileName, 'image/png', userId);
+
+      // ── Lưu asset record ─────────────────────────────────────────────────
       const asset = await CreditService.saveOutputAsset({
         userId,
         url: publicUrl,
         category: 'output',
-        mimeType: result.mimeType,
+        mimeType: 'image/png',
         fileName,
       });
 
-      // 6. Liên kết asset với job
       await CreditService.linkAssetToJob(jobId, asset.id, 'output');
-
-      // 7. Update job completed
       await CreditService.updateAIJob(jobId, 'completed');
 
-      // 8. Trừ credit
-      await CreditService.deductCredit(
-        userId,
-        CREDIT_COST,
-        `Generate ảnh: ${prompt.slice(0, 50)}...`,
-        jobId
-      );
+      // ── Trừ credit ───────────────────────────────────────────────────────
+      await CreditService.deductCredit(userId, CREDIT_COST, `Virtual try-on (${category})`, jobId);
 
       sendSuccess(res, {
         statusCode: 201,
-        message: 'Generate ảnh thành công.',
+        message: 'Virtual try-on thành công.',
         data: {
           imageUrl: publicUrl,
           assetId: asset.id,
           jobId,
-          textResponse: result.textResponse,
-          modelUsed: result.modelUsed,
-          keyIndex: result.keyIndex,
+          predictionId: result.predictionId,
           creditsUsed: CREDIT_COST,
         },
       });
     } catch (err: any) {
-      console.error('[AIController.generateImage]', err);
-      if (jobId) {
-        await CreditService.updateAIJob(jobId, 'failed', err.message).catch(() => {});
-      }
-      sendError(res, 500, err.message);
-    }
-  }
-
-  /**
-   * POST /api/ai/edit
-   * Edit ảnh bằng conversational editing (upload ảnh + prompt).
-   * Body: multipart/form-data với file ảnh + prompt
-   */
-  public async editImage(req: AuthRequest, res: Response): Promise<void> {
-    let jobId: string | undefined;
-    const CREDIT_COST = 8;
-
-    try {
-      const userId = req.user?.id;
-      if (!userId) {
-        sendError(res, 401, 'Không tìm thấy thông tin xác thực người dùng.');
-        return;
-      }
-
-      const { prompt } = req.body;
-      if (!prompt || typeof prompt !== 'string') {
-        sendError(res, 400, 'Thiếu hoặc sai định dạng prompt.');
-        return;
-      }
-
-      const file = (req as any).file;
-      if (!file || !Buffer.isBuffer(file.buffer)) {
-        sendError(res, 400, 'Thiếu file ảnh. Gửi multipart/form-data với field "image".');
-        return;
-      }
-
-      // 1. Check credit
-      const creditCheck = await CreditService.checkCredit(userId, CREDIT_COST);
-      if (!creditCheck.ok) {
-        sendError(res, 402, `Credit không đủ. Cần ${CREDIT_COST}, hiện có ${creditCheck.userCredit}.`);
-        return;
-      }
-
-      // 2. Tạo AI job
-      const job = await CreditService.createAIJob({
-        userId,
-        type: 'edit',
-        prompt,
-        creditCost: CREDIT_COST,
-        provider: 'nano_banana',
-        inputParams: { originalMimeType: file.mimetype },
-      });
-      jobId = job.jobId;
-
-      // 3. Lưu input asset
-      const inputAsset = await CreditService.saveOutputAsset({
-        userId,
-        url: '', // input không cần public URL trong MVP
-        category: 'reference',
-        mimeType: file.mimetype,
-        fileName: file.originalname || 'input.png',
-      });
-      await CreditService.linkAssetToJob(jobId, inputAsset.id, 'input');
-
-      // 4. Gọi Gemini edit
-      const result = await geminiService.editImage(
-        file.buffer,
-        file.mimetype || 'image/png',
-        prompt
-      );
-
-      // 5. Upload ảnh output
-      const imageBuffer = Buffer.from(result.base64Image, 'base64');
-      const fileName = `edited_${Date.now()}.png`;
-      const publicUrl = await StorageService.uploadBuffer(
-        imageBuffer,
-        fileName,
-        result.mimeType,
-        userId
-      );
-
-      // 6. Lưu output asset
-      const outputAsset = await CreditService.saveOutputAsset({
-        userId,
-        url: publicUrl,
-        category: 'output',
-        mimeType: result.mimeType,
-        fileName,
-      });
-      await CreditService.linkAssetToJob(jobId, outputAsset.id, 'output');
-
-      // 7. Update job completed
-      await CreditService.updateAIJob(jobId, 'completed');
-
-      // 8. Trừ credit
-      await CreditService.deductCredit(
-        userId,
-        CREDIT_COST,
-        `Edit ảnh: ${prompt.slice(0, 50)}...`,
-        jobId
-      );
-
-      sendSuccess(res, {
-        statusCode: 201,
-        message: 'Edit ảnh thành công.',
-        data: {
-          imageUrl: publicUrl,
-          assetId: outputAsset.id,
-          jobId,
-          textResponse: result.textResponse,
-          modelUsed: result.modelUsed,
-          keyIndex: result.keyIndex,
-          creditsUsed: CREDIT_COST,
-        },
-      });
-    } catch (err: any) {
-      console.error('[AIController.editImage]', err);
+      console.error('[AIController.tryOn]', err);
       if (jobId) {
         await CreditService.updateAIJob(jobId, 'failed', err.message).catch(() => {});
       }

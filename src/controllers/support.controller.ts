@@ -194,6 +194,21 @@ export class SupportController {
         return;
       }
 
+      // First-responder assignment lock:
+      // If conversation is already assigned to another staff, only that staff (or admin) can reply
+      if (
+        conversation.assigned_staff_id &&
+        conversation.assigned_staff_id !== req.user.id &&
+        req.user.role === UserRole.STAFF
+      ) {
+        res.status(409).json({
+          success: false,
+          error: 'Cuộc hội thoại này đã được nhận bởi một staff khác.',
+          data: { assigned_staff_id: conversation.assigned_staff_id },
+        });
+        return;
+      }
+
       let senderType = this.getSenderType(req.user.role);
       const validSenderTypes = ['customer', 'staff', 'admin', 'bot', 'system'];
       

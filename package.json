@@ -20,7 +20,6 @@
   },
   "homepage": "https://github.com/GU-AI-enterprise/GU.AI-Backend#readme",
   "dependencies": {
-    "@google/generative-ai": "^0.24.1",
     "@supabase/supabase-js": "^2.106.0",
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.6",

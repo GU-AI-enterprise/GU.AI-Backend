@@ -3,6 +3,7 @@ import { AuthRequest } from '../middlewares/auth.middleware';
 import { ImageService } from '../services/image.service';
 import { sendSuccess, sendError } from '../utils/response';
 
+
 export class ImageController {
   // 1. Lấy danh sách toàn bộ ảnh của người dùng hiện tại
   public async getImages(req: AuthRequest, res: Response): Promise<void> {
@@ -21,7 +22,7 @@ export class ImageController {
     } catch (err: any) {
       sendError(res, 500, err.message);
     }
-  }
+  } 
 
   // 2. Thêm một bản ghi asset mới
   public async createImage(req: AuthRequest, res: Response): Promise<void> {

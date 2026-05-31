@@ -1,5 +1,5 @@
 import { Socket } from 'socket.io';
-import { supabase } from '../config/supabase';
+import { supabase, supabaseAdmin } from '../config/supabase';
 import { SocketService } from '../services/socket.service';
 import { UserRole, isValidRole, hasRoleOrHigher } from '../types/role';
 
@@ -7,6 +7,35 @@ export interface AuthenticatedSocket extends Socket {
   userId?: string;
   userEmail?: string;
   userRole?: UserRole;
+}
+
+// Mirror the same upsert logic as auth.middleware to avoid race conditions
+// when a user connects via socket before their first HTTP request
+async function resolveUserRole(user: any): Promise<string> {
+  if (!supabaseAdmin) throw new Error('SUPABASE_SERVICE_ROLE_KEY not configured');
+
+  const { data: existing } = await supabaseAdmin
+    .from('users')
+    .select('role')
+    .eq('id', user.id)
+    .single();
+
+  if (existing) return existing.role;
+
+  // New user — create record with default customer role
+  await supabaseAdmin.from('users').insert({
+    id: user.id,
+    email: user.email,
+    name: user.user_metadata?.full_name || user.user_metadata?.name || user.email?.split('@')[0] || null,
+    avatar_url: user.user_metadata?.avatar_url || user.user_metadata?.picture || null,
+    provider: user.app_metadata?.provider || 'email',
+    role: 'customer',
+    status: 'active',
+    current_credit: 0,
+    plan_type: 'free',
+  });
+
+  return 'customer';
 }
 
 export const socketAuthMiddleware = async (
@@ -26,30 +55,23 @@ export const socketAuthMiddleware = async (
       return next(new Error('Authentication error: Invalid token'));
     }
 
-    // Fetch user role from database
-    const { data: userData, error: userError } = await supabase
-      .from('users')
-      .select('role')
-      .eq('id', user.id)
-      .single();
+    const role = await resolveUserRole(user);
 
-    if (userError || !userData || !isValidRole(userData.role)) {
+    if (!isValidRole(role)) {
       return next(new Error('Authentication error: User role not found or invalid'));
     }
 
     socket.userId = user.id;
     socket.userEmail = user.email;
-    socket.userRole = userData.role as UserRole;
+    socket.userRole = role as UserRole;
 
-    // Join user to their personal room
     SocketService.joinUserRoom(socket.id, user.id);
 
-    // If admin or staff, join staff room for monitoring
-    if (hasRoleOrHigher(userData.role as UserRole, UserRole.STAFF)) {
+    if (hasRoleOrHigher(role as UserRole, UserRole.STAFF)) {
       SocketService.joinAdminRoom(socket.id);
     }
 
-    console.log(`✅ User authenticated: ${user.email} (${user.id}) as ${userData.role}`);
+    console.log(`✅ Socket authenticated: ${user.email} (${user.id}) as ${role}`);
     next();
   } catch (error: any) {
     console.error('Socket authentication error:', error);
@@ -64,29 +86,14 @@ export const adminAuthMiddleware = async (
   try {
     const token = socket.handshake.auth.token || socket.handshake.headers.authorization?.replace('Bearer ', '');
 
-    if (!token) {
-      return next(new Error('Authentication error: No token provided'));
-    }
+    if (!token) return next(new Error('Authentication error: No token provided'));
 
     const { data: { user }, error } = await supabase.auth.getUser(token);
+    if (error || !user) return next(new Error('Authentication error: Invalid token'));
 
-    if (error || !user) {
-      return next(new Error('Authentication error: Invalid token'));
-    }
+    const role = await resolveUserRole(user);
 
-    // Fetch user role from database
-    const { data: userData, error: userError } = await supabase
-      .from('users')
-      .select('role')
-      .eq('id', user.id)
-      .single();
-
-    if (userError || !userData || !isValidRole(userData.role)) {
-      return next(new Error('Authentication error: User role not found or invalid'));
-    }
-
-    // Check if user is admin
-    if (userData.role !== UserRole.ADMIN) {
+    if (role !== UserRole.ADMIN) {
       return next(new Error('Authorization error: Admin access required'));
     }
 
@@ -94,13 +101,10 @@ export const adminAuthMiddleware = async (
     socket.userEmail = user.email;
     socket.userRole = UserRole.ADMIN;
 
-    // Join admin room
     SocketService.joinAdminRoom(socket.id);
-
-    console.log(`✅ Admin authenticated: ${user.email} (${user.id})`);
+    console.log(`✅ Admin socket authenticated: ${user.email}`);
     next();
   } catch (error: any) {
-    console.error('Admin socket authentication error:', error);
     next(new Error('Authentication error: Internal server error'));
   }
 };
@@ -112,43 +116,25 @@ export const staffAuthMiddleware = async (
   try {
     const token = socket.handshake.auth.token || socket.handshake.headers.authorization?.replace('Bearer ', '');
 
-    if (!token) {
-      return next(new Error('Authentication error: No token provided'));
-    }
+    if (!token) return next(new Error('Authentication error: No token provided'));
 
     const { data: { user }, error } = await supabase.auth.getUser(token);
+    if (error || !user) return next(new Error('Authentication error: Invalid token'));
 
-    if (error || !user) {
-      return next(new Error('Authentication error: Invalid token'));
-    }
+    const role = await resolveUserRole(user);
 
-    // Fetch user role from database
-    const { data: userData, error: userError } = await supabase
-      .from('users')
-      .select('role')
-      .eq('id', user.id)
-      .single();
-
-    if (userError || !userData || !isValidRole(userData.role)) {
-      return next(new Error('Authentication error: User role not found or invalid'));
-    }
-
-    // Check if user is staff or admin
-    if (!hasRoleOrHigher(userData.role as UserRole, UserRole.STAFF)) {
+    if (!hasRoleOrHigher(role as UserRole, UserRole.STAFF)) {
       return next(new Error('Authorization error: Staff or Admin access required'));
     }
 
     socket.userId = user.id;
     socket.userEmail = user.email;
-    socket.userRole = userData.role as UserRole;
+    socket.userRole = role as UserRole;
 
-    // Join staff room
     SocketService.joinAdminRoom(socket.id);
-
-    console.log(`✅ Staff authenticated: ${user.email} (${user.id}) as ${userData.role}`);
+    console.log(`✅ Staff socket authenticated: ${user.email} as ${role}`);
     next();
   } catch (error: any) {
-    console.error('Staff socket authentication error:', error);
     next(new Error('Authentication error: Internal server error'));
   }
 };
