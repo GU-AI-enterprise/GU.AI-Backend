@@ -2,8 +2,8 @@ const FASHN_BASE_URL = 'https://api.fashn.ai/v1';
 const POLL_INTERVAL_MS = 3_000;
 const POLL_TIMEOUT_MS = 120_000;
 
-export type TryOnCategory = 'tops' | 'bottoms' | 'one-pieces';
-export type TryOnMode = 'quality' | 'balanced' | 'speed';
+import { TryOnCategory, TryOnMode } from '../constants/ai';
+export { TryOnCategory, TryOnMode };
 
 export interface TryOnOptions {
   modelImage: string; // URL hoặc data URI base64

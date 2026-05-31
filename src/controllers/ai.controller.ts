@@ -1,12 +1,14 @@
 import { Response } from 'express';
 import { AuthRequest } from '../middlewares/auth.middleware';
-import { fashnService, TryOnCategory, TryOnMode } from '../services/fashn.service';
+import { fashnService } from '../services/fashn.service';
 import { CreditService } from '../services/credit.service';
 import { StorageService } from '../services/storage.service';
 import { sendSuccess, sendError } from '../utils/response';
+import { AIJobType, AIJobStatus, AIProvider, TryOnCategory, TryOnMode, CREDIT_COST } from '../constants/ai';
+import { AssetCategory, AssetRole } from '../constants/asset';
 
-const VALID_CATEGORIES: TryOnCategory[] = ['tops', 'bottoms', 'one-pieces'];
-const VALID_MODES: TryOnMode[] = ['quality', 'balanced', 'speed'];
+const VALID_CATEGORIES = Object.values(TryOnCategory);
+const VALID_MODES = Object.values(TryOnMode);
 
 export class AIController {
   /**
@@ -60,7 +62,7 @@ export class AIController {
    */
   public async tryOn(req: AuthRequest, res: Response): Promise<void> {
     let jobId: string | undefined;
-    const CREDIT_COST = 10;
+    const cost = CREDIT_COST[AIJobType.TRY_ON];
 
     try {
       const userId = req.user?.id;
@@ -110,19 +112,19 @@ export class AIController {
       }
 
       // ── Kiểm tra credit ──────────────────────────────────────────────────
-      const creditCheck = await CreditService.checkCredit(userId, CREDIT_COST);
+      const creditCheck = await CreditService.checkCredit(userId, cost);
       if (!creditCheck.ok) {
-        sendError(res, 402, `Credit không đủ. Cần ${CREDIT_COST}, hiện có ${creditCheck.userCredit}.`);
+        sendError(res, 402, `Credit không đủ. Cần ${cost}, hiện có ${creditCheck.userCredit}.`);
         return;
       }
 
       // ── Tạo AI job ───────────────────────────────────────────────────────
       const job = await CreditService.createAIJob({
         userId,
-        type: 'try_on',
+        type: AIJobType.TRY_ON,
         prompt: `Try-on: category=${category}, mode=${mode}`,
-        creditCost: CREDIT_COST,
-        provider: 'fashn',
+        creditCost: cost,
+        provider: AIProvider.FASHN,
         inputParams: { category, mode },
       });
       jobId = job.jobId;
@@ -142,16 +144,16 @@ export class AIController {
       const asset = await CreditService.saveOutputAsset({
         userId,
         url: publicUrl,
-        category: 'output',
+        category: AssetCategory.OUTPUT,
         mimeType: 'image/png',
         fileName,
       });
 
-      await CreditService.linkAssetToJob(jobId, asset.id, 'output');
-      await CreditService.updateAIJob(jobId, 'completed');
+      await CreditService.linkAssetToJob(jobId, asset.id, AssetRole.OUTPUT);
+      await CreditService.updateAIJob(jobId, AIJobStatus.COMPLETED);
 
       // ── Trừ credit ───────────────────────────────────────────────────────
-      await CreditService.deductCredit(userId, CREDIT_COST, `Virtual try-on (${category})`, jobId);
+      await CreditService.deductCredit(userId, cost, `Virtual try-on (${category})`, jobId);
 
       sendSuccess(res, {
         statusCode: 201,
@@ -161,13 +163,13 @@ export class AIController {
           assetId: asset.id,
           jobId,
           predictionId: result.predictionId,
-          creditsUsed: CREDIT_COST,
+          creditsUsed: cost,
         },
       });
     } catch (err: any) {
       console.error('[AIController.tryOn]', err);
       if (jobId) {
-        await CreditService.updateAIJob(jobId, 'failed', err.message).catch(() => {});
+        await CreditService.updateAIJob(jobId, AIJobStatus.FAILED, err.message).catch(() => {});
       }
       sendError(res, 500, err.message);
     }

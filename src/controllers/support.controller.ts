@@ -3,6 +3,7 @@ import { supabaseAdmin } from '../config/supabase';
 import { AuthRequest } from '../middlewares/auth.middleware';
 import { UserRole } from '../types/role';
 import { SocketService } from '../services/socket.service';
+import { SupportStatus, SenderType, MessageType, ConversationSource } from '../constants/support';
 
 const SUPPORT_MESSAGE_SELECT = `
   id,
@@ -38,13 +39,12 @@ export class SupportController {
     return true;
   }
 
-  private getSenderType(role: UserRole | string): 'customer' | 'staff' | 'admin' | 'bot' {
+  private getSenderType(role: UserRole | string): SenderType {
     const roleStr = String(role).toLowerCase().trim();
     console.log('[SupportController] getSenderType input:', role, 'normalized:', roleStr);
-    if (roleStr === 'admin' || roleStr === UserRole.ADMIN) return 'admin';
-    if (roleStr === 'staff' || roleStr === UserRole.STAFF) return 'staff';
-    // Database constraint yêu cầu 'customer' thay vì 'user'
-    return 'customer';
+    if (roleStr === 'admin' || roleStr === UserRole.ADMIN) return SenderType.ADMIN;
+    if (roleStr === 'staff' || roleStr === UserRole.STAFF) return SenderType.STAFF;
+    return SenderType.CUSTOMER;
   }
 
   public async getMyConversation(req: AuthRequest, res: Response): Promise<void> {
@@ -59,7 +59,7 @@ export class SupportController {
         .from('support_conversations')
         .select(SUPPORT_CONVERSATION_SELECT)
         .eq('user_id', req.user.id)
-        .in('status', ['open', 'pending'])
+        .in('status', [SupportStatus.OPEN, SupportStatus.PENDING])
         .order('created_at', { ascending: false })
         .limit(1)
         .maybeSingle();
@@ -71,8 +71,8 @@ export class SupportController {
           .from('support_conversations')
           .insert({
             user_id: req.user.id,
-            status: 'open',
-            source: 'web',
+            status: SupportStatus.OPEN,
+            source: ConversationSource.WEB,
             last_message_at: new Date().toISOString(),
           })
           .select(SUPPORT_CONVERSATION_SELECT)
@@ -210,12 +210,10 @@ export class SupportController {
       }
 
       let senderType = this.getSenderType(req.user.role);
-      const validSenderTypes = ['customer', 'staff', 'admin', 'bot', 'system'];
-      
       // Đảm bảo sender_type luôn hợp lệ
-      if (!validSenderTypes.includes(senderType)) {
+      if (!Object.values(SenderType).includes(senderType)) {
         console.error('[SupportController] Invalid senderType calculated:', senderType, 'from role:', req.user.role);
-        senderType = 'customer'; // fallback an toàn
+        senderType = SenderType.CUSTOMER;
       }
       
       const now = new Date().toISOString();
@@ -233,7 +231,7 @@ export class SupportController {
         sender_id: req.user.id,
         sender_type: senderType,
         content: content.trim(),
-        message_type: 'text',
+        message_type: MessageType.TEXT,
         is_read: false,
       };
 
@@ -256,7 +254,7 @@ export class SupportController {
 
       if (senderType !== 'customer' && !conversation.assigned_staff_id) {
         updates.assigned_staff_id = req.user.id;
-        updates.status = 'pending';
+        updates.status = SupportStatus.PENDING;
       }
 
       await supabaseAdmin!
@@ -294,7 +292,7 @@ export class SupportController {
 
       const { conversationId } = req.params;
       const { status } = req.body;
-      const allowedStatuses = ['open', 'pending', 'resolved', 'closed'];
+      const allowedStatuses = Object.values(SupportStatus);
 
       if (!allowedStatuses.includes(status)) {
         res.status(400).json({ success: false, error: 'Invalid conversation status.' });

@@ -1,4 +1,6 @@
 import { supabaseAdmin } from '../config/supabase';
+import { AIJobType, AIJobStatus, AIProvider } from '../constants/ai';
+import { AssetType, AssetCategory, AssetRole } from '../constants/asset';
 
 export interface CreditCheckResult {
   ok: boolean;
@@ -99,10 +101,10 @@ export class CreditService {
    */
   public static async createAIJob(params: {
     userId: string;
-    type: 'try_on' | 'generate' | 'edit' | 'remove_bg' | 'upscale';
+    type: AIJobType;
     prompt?: string;
     creditCost: number;
-    provider: 'nano_banana' | 'remove_bg' | 'fashn';
+    provider: AIProvider;
     inputParams?: any;
   }): Promise<AIJobCreateResult> {
     const client = this.getClient();
@@ -134,7 +136,7 @@ export class CreditService {
    */
   public static async updateAIJob(
     jobId: string,
-    status: 'processing' | 'completed' | 'failed' | 'cancelled',
+    status: AIJobStatus,
     errorMessage?: string
   ): Promise<void> {
     const client = this.getClient();
@@ -160,7 +162,7 @@ export class CreditService {
   public static async saveOutputAsset(params: {
     userId: string;
     url: string;
-    category: 'product' | 'model' | 'background' | 'output' | 'reference';
+    category: AssetCategory;
     mimeType?: string;
     fileName?: string;
     width?: number;
@@ -172,7 +174,7 @@ export class CreditService {
       .from('assets')
       .insert({
         user_id: params.userId,
-        type: 'image',
+        type: AssetType.IMAGE,
         category: params.category,
         url: params.url,
         mime_type: params.mimeType || 'image/png',
@@ -196,7 +198,7 @@ export class CreditService {
   public static async linkAssetToJob(
     jobId: string,
     assetId: string,
-    role: 'input' | 'output' | 'product' | 'model' | 'background' | 'reference' | 'mask'
+    role: AssetRole
   ): Promise<void> {
     const client = this.getClient();
 
