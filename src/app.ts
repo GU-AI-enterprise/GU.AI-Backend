@@ -12,6 +12,7 @@ import userRoutes from './routes/user.routes';
 import aiRoutes from './routes/ai.routes';
 import supportRoutes from './routes/support.routes';
 import adminRoutes from './routes/admin.routes';
+import notificationRoutes from './routes/notification.routes';
 import { setupSwagger } from './config/swagger';
 import { globalLimiter, authLimiter, aiLimiter, supportLimiter } from './middlewares/rateLimit.middleware';
 
@@ -80,6 +81,7 @@ app.use('/api/users',                   userRoutes);
 app.use('/api/ai',      aiLimiter,      aiRoutes);
 app.use('/api/support', supportLimiter, supportRoutes);
 app.use('/api/admin',                   adminRoutes);
+app.use('/api/notifications',           notificationRoutes);
 
 // Health Check
 app.get('/health', (req: Request, res: Response) => {

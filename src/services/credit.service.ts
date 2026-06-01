@@ -212,4 +212,56 @@ export class CreditService {
       console.error('[CreditService] Lỗi liên kết asset với job:', error.message);
     }
   }
+
+  /**
+   * Cộng credit cho user (dùng bởi admin/staff khi award thủ công).
+   */
+  public static async addCredit(
+    userId: string,
+    amount: number,
+    description: string,
+    type: 'bonus' | 'admin_adjust' | 'refund' = 'admin_adjust'
+  ): Promise<{ newBalance: number }> {
+    const client = this.getClient();
+
+    // Atomic increment via Postgres RPC to prevent race conditions
+    const { data, error } = await client.rpc('increment_user_credit', {
+      p_user_id: userId,
+      p_amount: amount,
+    });
+
+    if (error) {
+      // Fallback: read-then-write if RPC not available
+      const { data: user, error: userErr } = await client
+        .from('users').select('current_credit').eq('id', userId).single();
+      if (userErr || !user) throw new Error(`Không thể lấy credit: ${userErr?.message ?? 'User not found'}`);
+      const newBalance = user.current_credit + amount;
+      const { error: updateErr } = await client
+        .from('users')
+        .update({ current_credit: newBalance, updated_at: new Date().toISOString() })
+        .eq('id', userId);
+      if (updateErr) throw new Error(`Lỗi cập nhật credit: ${updateErr.message}`);
+      const { error: ledgerErr } = await client.from('credit_ledger').insert({
+        user_id: userId, type, amount, balance_after: newBalance, description,
+      });
+      if (ledgerErr) console.error('[CreditService] Lỗi ghi credit_ledger:', ledgerErr.message);
+      return { newBalance };
+    }
+
+    const newBalance: number = data;
+
+    const { error: ledgerErr } = await client.from('credit_ledger').insert({
+      user_id: userId,
+      type,
+      amount,
+      balance_after: newBalance,
+      description,
+    });
+
+    if (ledgerErr) {
+      console.error('[CreditService] Lỗi ghi credit_ledger:', ledgerErr.message);
+    }
+
+    return { newBalance };
+  }
 }

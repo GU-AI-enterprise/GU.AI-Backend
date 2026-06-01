@@ -1,6 +1,10 @@
 import { Response } from 'express';
 import { supabaseAdmin } from '../config/supabase';
 import { AuthRequest } from '../middlewares/auth.middleware';
+import { CreditService } from '../services/credit.service';
+import { NotificationService } from '../services/notification.service';
+import { NotificationType, NotificationPriority } from '../constants/notification';
+import { sendSuccess, sendError } from '../utils/response';
 
 export class AdminController {
   public async listUsers(req: AuthRequest, res: Response): Promise<void> {
@@ -208,6 +212,50 @@ export class AdminController {
       res.json({ success: true, message: 'Đã xóa tài khoản thành công.' });
     } catch (err: any) {
       res.status(500).json({ success: false, error: err.message });
+    }
+  }
+
+  public async awardCredits(req: AuthRequest, res: Response): Promise<void> {
+    try {
+      if (!supabaseAdmin) { sendError(res, 500, 'Service role not configured'); return; }
+
+      const { id } = req.params;
+      const { amount, reason } = req.body;
+
+      if (!Number.isInteger(amount) || amount <= 0) {
+        sendError(res, 400, 'amount phải là số nguyên dương.'); return;
+      }
+      const { data: user, error: userErr } = await supabaseAdmin
+        .from('users').select('id, email, name').eq('id', id).maybeSingle();
+      if (userErr || !user) { sendError(res, 404, 'User không tồn tại.'); return; }
+
+      const staffLabel = req.user?.email ?? 'Admin';
+      const reasonText = reason?.trim() || '';
+      const description = reasonText
+        ? `Cộng credit bởi ${staffLabel}: ${reasonText}`
+        : `Cộng credit bởi ${staffLabel}`;
+
+      const { newBalance } = await CreditService.addCredit(id, amount, description, 'admin_adjust');
+
+      const notifContent = reasonText
+        ? `Tài khoản của bạn vừa được cộng ${amount.toLocaleString()} credits. Lý do: ${reasonText}.`
+        : `Tài khoản của bạn vừa được cộng ${amount.toLocaleString()} credits.`;
+
+      await NotificationService.create({
+        userId: id,
+        type: NotificationType.PROMOTION,
+        title: `Bạn nhận được ${amount.toLocaleString()} Credits!`,
+        content: notifContent,
+        priority: NotificationPriority.HIGH,
+        data: { amount, ...(reasonText && { reason: reasonText }), newBalance, awardedBy: staffLabel },
+      });
+
+      sendSuccess(res, {
+        message: `Đã cộng ${amount} credits cho user thành công.`,
+        data: { userId: id, amount, newBalance },
+      });
+    } catch (err: any) {
+      sendError(res, 500, err.message);
     }
   }
 }

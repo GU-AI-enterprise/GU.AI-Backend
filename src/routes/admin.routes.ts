@@ -12,5 +12,6 @@ router.get('/users', requireStaff, ctrl.listUsers.bind(ctrl));
 router.patch('/users/:id/role', requireAdmin, ctrl.updateRole.bind(ctrl));
 router.patch('/users/:id/status', requireStaff, ctrl.updateStatus.bind(ctrl));
 router.delete('/users/:id', requireAdmin, ctrl.deleteUser.bind(ctrl));
+router.post('/users/:id/credits', requireStaff, ctrl.awardCredits.bind(ctrl));
 
 export default router;
