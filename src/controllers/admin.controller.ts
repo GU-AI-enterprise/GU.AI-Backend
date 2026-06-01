@@ -221,6 +221,7 @@ export class AdminController {
 
       const { id } = req.params;
       const { amount, reason } = req.body;
+      console.log(`[AdminController.awardCredits] REQUEST userId=${id} amount=${amount} by=${req.user?.email} at=${new Date().toISOString()}`);
 
       if (!Number.isInteger(amount) || amount <= 0) {
         sendError(res, 400, 'amount phải là số nguyên dương.'); return;

@@ -71,17 +71,8 @@ export class CreditService {
 
     const newBalance = user.current_credit - cost;
 
-    // Update user credit
-    const { error: updateErr } = await client
-      .from('users')
-      .update({ current_credit: newBalance, updated_at: new Date().toISOString() })
-      .eq('id', userId);
-
-    if (updateErr) {
-      throw new Error(`Lỗi cập nhật credit: ${updateErr.message}`);
-    }
-
-    // Ghi vào credit_ledger
+    // Chỉ INSERT vào credit_ledger — trigger trg_credit_ledger_apply (apply_credit_ledger)
+    // tự động cập nhật users.current_credit. Không UPDATE trực tiếp để tránh double-deduct.
     const { error: ledgerErr } = await client.from('credit_ledger').insert({
       user_id: userId,
       ai_job_id: jobId || null,
@@ -92,7 +83,7 @@ export class CreditService {
     });
 
     if (ledgerErr) {
-      console.error('[CreditService] Lỗi ghi credit_ledger:', ledgerErr.message);
+      throw new Error(`Lỗi ghi credit_ledger: ${ledgerErr.message}`);
     }
   }
 
@@ -224,43 +215,25 @@ export class CreditService {
   ): Promise<{ newBalance: number }> {
     const client = this.getClient();
 
-    // Atomic increment via Postgres RPC to prevent race conditions
-    const { data, error } = await client.rpc('increment_user_credit', {
-      p_user_id: userId,
-      p_amount: amount,
-    });
+    // Đọc balance hiện tại để tính balance_after cho ledger record
+    const { data: user, error: userErr } = await client
+      .from('users').select('current_credit').eq('id', userId).single();
+    if (userErr || !user) throw new Error(`Không thể lấy credit: ${userErr?.message ?? 'User not found'}`);
 
-    if (error) {
-      // Fallback: read-then-write if RPC not available
-      const { data: user, error: userErr } = await client
-        .from('users').select('current_credit').eq('id', userId).single();
-      if (userErr || !user) throw new Error(`Không thể lấy credit: ${userErr?.message ?? 'User not found'}`);
-      const newBalance = user.current_credit + amount;
-      const { error: updateErr } = await client
-        .from('users')
-        .update({ current_credit: newBalance, updated_at: new Date().toISOString() })
-        .eq('id', userId);
-      if (updateErr) throw new Error(`Lỗi cập nhật credit: ${updateErr.message}`);
-      const { error: ledgerErr } = await client.from('credit_ledger').insert({
-        user_id: userId, type, amount, balance_after: newBalance, description,
-      });
-      if (ledgerErr) console.error('[CreditService] Lỗi ghi credit_ledger:', ledgerErr.message);
-      return { newBalance };
-    }
+    const expectedBalance = user.current_credit + amount;
 
-    const newBalance: number = data;
-
+    // Chỉ INSERT vào credit_ledger.
+    // Trigger apply_credit_ledger (BEFORE INSERT) tự cập nhật users.current_credit
+    // và ghi đè balance_after với giá trị chính xác.
     const { error: ledgerErr } = await client.from('credit_ledger').insert({
-      user_id: userId,
-      type,
-      amount,
-      balance_after: newBalance,
-      description,
+      user_id: userId, type, amount, balance_after: expectedBalance, description,
     });
+    if (ledgerErr) throw new Error(`Lỗi ghi credit_ledger: ${ledgerErr.message}`);
 
-    if (ledgerErr) {
-      console.error('[CreditService] Lỗi ghi credit_ledger:', ledgerErr.message);
-    }
+    // Đọc lại balance thực tế sau khi trigger chạy
+    const { data: updated } = await client
+      .from('users').select('current_credit').eq('id', userId).single();
+    const newBalance = updated?.current_credit ?? expectedBalance;
 
     return { newBalance };
   }
