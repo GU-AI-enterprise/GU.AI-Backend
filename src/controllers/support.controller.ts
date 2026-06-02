@@ -4,6 +4,8 @@ import { AuthRequest } from '../middlewares/auth.middleware';
 import { UserRole } from '../types/role';
 import { SocketService } from '../services/socket.service';
 import { SupportStatus, SenderType, MessageType, ConversationSource } from '../constants/support';
+import { sendSuccess, sendError } from '../utils/response';
+import { StorageService } from '../services/storage.service';
 
 const SUPPORT_MESSAGE_SELECT = `
   id,
@@ -90,6 +92,15 @@ export class SupportController {
 
       if (messageError) throw messageError;
 
+      // Customer opened their chat → mark staff/admin messages as read + notify staff
+      await supabaseAdmin!
+        .from('support_messages')
+        .update({ is_read: true })
+        .eq('conversation_id', conversation.id)
+        .neq('sender_type', SenderType.CUSTOMER)
+        .eq('is_read', false);
+      SocketService.emitReadReceipt(conversation.id, 'customer');
+
       res.status(200).json({ success: true, data: { conversation, messages: messages || [] } });
     } catch (err: any) {
       res.status(500).json({ success: false, error: 'Failed to get support conversation.', details: err.message });
@@ -163,6 +174,28 @@ export class SupportController {
         .order('created_at', { ascending: true });
 
       if (error) throw error;
+
+      // Auto mark-read when opening the conversation
+      const isStaff = req.user.role === UserRole.STAFF || req.user.role === UserRole.ADMIN;
+      if (isStaff) {
+        // Staff opened → mark customer messages as read + notify customer
+        await supabaseAdmin!
+          .from('support_messages')
+          .update({ is_read: true })
+          .eq('conversation_id', conversationId)
+          .eq('sender_type', SenderType.CUSTOMER)
+          .eq('is_read', false);
+        SocketService.emitReadReceipt(conversationId, 'staff');
+      } else {
+        // Customer opened → mark staff messages as read + notify staff
+        await supabaseAdmin!
+          .from('support_messages')
+          .update({ is_read: true })
+          .eq('conversation_id', conversationId)
+          .neq('sender_type', SenderType.CUSTOMER)
+          .eq('is_read', false);
+        SocketService.emitReadReceipt(conversationId, 'customer');
+      }
 
       res.status(200).json({ success: true, data: { conversation, messages: messages || [] } });
     } catch (err: any) {
@@ -277,6 +310,15 @@ export class SupportController {
         content: message.content,
         timestamp: new Date(message.created_at),
       });
+
+      if (senderType !== SenderType.CUSTOMER) {
+        // Staff/admin replied → notify the customer
+        SocketService.emitSupportNewMessage(conversation.user_id, conversationId);
+      } else {
+        // Customer sent a message → notify all staff/admin
+        SocketService.emitSupportNeedsHelp(conversationId);
+      }
+
       SocketService.sendMonitoringData({
         type: 'system',
         metric: 'support_message_created',
@@ -287,6 +329,190 @@ export class SupportController {
       res.status(201).json({ success: true, data: message });
     } catch (err: any) {
       res.status(500).json({ success: false, error: 'Failed to send support message.', details: err.message });
+    }
+  }
+
+  /**
+   * Role-aware badge count:
+   * - Customer → count of unread messages from staff/admin in their conversation
+   * - Staff/Admin → count of conversations with unread messages from customers
+   */
+  public async getBadgeCount(req: AuthRequest, res: Response): Promise<void> {
+    try {
+      if (!req.user) { sendError(res, 401, 'Authentication required.'); return; }
+      if (!this.ensureAdminClient(res)) return;
+
+      const role = req.user.role;
+      const isStaff = role === UserRole.STAFF || role === UserRole.ADMIN;
+
+      if (!isStaff) {
+        // Customer: count unread staff/admin messages in their active conversation
+        const { data: conv } = await supabaseAdmin!
+          .from('support_conversations')
+          .select('id')
+          .eq('user_id', req.user.id)
+          .in('status', [SupportStatus.OPEN, SupportStatus.PENDING])
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        if (!conv) {
+          sendSuccess(res, { data: { count: 0, role, conversationId: null } });
+          return;
+        }
+
+        const { count } = await supabaseAdmin!
+          .from('support_messages')
+          .select('id', { count: 'exact', head: true })
+          .eq('conversation_id', conv.id)
+          .eq('is_read', false)
+          .neq('sender_type', SenderType.CUSTOMER);
+
+        sendSuccess(res, { data: { count: count ?? 0, role, conversationId: conv.id } });
+      } else {
+        // Staff/Admin: count conversations with at least one unread customer message
+        const { data: convIds } = await supabaseAdmin!
+          .from('support_messages')
+          .select('conversation_id')
+          .eq('sender_type', SenderType.CUSTOMER)
+          .eq('is_read', false);
+
+        const unique = new Set((convIds ?? []).map((r: any) => r.conversation_id));
+        sendSuccess(res, { data: { count: unique.size, role, conversationId: null } });
+      }
+    } catch (err: any) {
+      sendError(res, 500, err.message);
+    }
+  }
+
+  /**
+   * Role-aware mark-read:
+   * - Customer → marks staff/admin messages in their conversation as read
+   * - Staff/Admin → marks customer messages in specified conversation as read
+   */
+  public async markConversationRead(req: AuthRequest, res: Response): Promise<void> {
+    try {
+      if (!req.user) { sendError(res, 401, 'Authentication required.'); return; }
+      if (!this.ensureAdminClient(res)) return;
+
+      const { conversationId } = req.params;
+      const role = req.user.role;
+      const isStaff = role === UserRole.STAFF || role === UserRole.ADMIN;
+
+      if (!isStaff) {
+        // Customer: verify ownership
+        const { data: conv } = await supabaseAdmin!
+          .from('support_conversations')
+          .select('id')
+          .eq('id', conversationId)
+          .eq('user_id', req.user.id)
+          .maybeSingle();
+
+        if (!conv) { sendError(res, 404, 'Conversation not found.'); return; }
+
+        await supabaseAdmin!
+          .from('support_messages')
+          .update({ is_read: true })
+          .eq('conversation_id', conversationId)
+          .neq('sender_type', SenderType.CUSTOMER)
+          .eq('is_read', false);
+
+        // Notify staff that customer has read their messages
+        SocketService.emitReadReceipt(conversationId, 'customer');
+      } else {
+        await supabaseAdmin!
+          .from('support_messages')
+          .update({ is_read: true })
+          .eq('conversation_id', conversationId)
+          .eq('sender_type', SenderType.CUSTOMER)
+          .eq('is_read', false);
+
+        // Notify customer that staff has read their messages
+        SocketService.emitReadReceipt(conversationId, 'staff');
+      }
+
+      sendSuccess(res, { data: null });
+    } catch (err: any) {
+      sendError(res, 500, err.message);
+    }
+  }
+
+  public async uploadSupportImage(req: AuthRequest, res: Response): Promise<void> {
+    try {
+      if (!req.user) { sendError(res, 401, 'Authentication required.'); return; }
+      if (!this.ensureAdminClient(res)) return;
+
+      const { conversationId } = req.params;
+      const file = (req as any).file as Express.Multer.File | undefined;
+      if (!file) { sendError(res, 400, 'Cần gửi file ảnh.'); return; }
+
+      const allowed = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+      if (!allowed.includes(file.mimetype)) {
+        sendError(res, 400, 'Chỉ chấp nhận ảnh JPEG, PNG, GIF, WEBP.'); return;
+      }
+
+      // Verify conversation access
+      const { data: conv, error: convErr } = await supabaseAdmin!
+        .from('support_conversations')
+        .select('id, user_id')
+        .eq('id', conversationId)
+        .maybeSingle();
+
+      if (convErr || !conv) { sendError(res, 404, 'Conversation not found.'); return; }
+
+      const role = req.user.role;
+      const isStaff = role === UserRole.STAFF || role === UserRole.ADMIN;
+      if (!isStaff && conv.user_id !== req.user.id) {
+        sendError(res, 403, 'Access denied.'); return;
+      }
+
+      const imageUrl = await StorageService.uploadSupportImage(
+        file.buffer,
+        file.originalname,
+        file.mimetype,
+        conversationId
+      );
+
+      const senderType = this.getSenderType(req.user.role);
+      const now = new Date().toISOString();
+
+      const { data: message, error: insertErr } = await supabaseAdmin!
+        .from('support_messages')
+        .insert({
+          conversation_id: conversationId,
+          sender_id: req.user.id,
+          sender_type: senderType,
+          content: imageUrl,
+          message_type: MessageType.IMAGE,
+          is_read: false,
+        })
+        .select(SUPPORT_MESSAGE_SELECT)
+        .single();
+
+      if (insertErr) throw insertErr;
+
+      await supabaseAdmin!
+        .from('support_conversations')
+        .update({ last_message_at: now, updated_at: now })
+        .eq('id', conversationId);
+
+      SocketService.broadcastToConversation(conversationId, {
+        fromUserId: req.user.id,
+        toUserId: conv.user_id,
+        conversationId,
+        content: imageUrl,
+        timestamp: new Date(message.created_at),
+      });
+
+      if (senderType !== SenderType.CUSTOMER) {
+        SocketService.emitSupportNewMessage(conv.user_id, conversationId);
+      } else {
+        SocketService.emitSupportNeedsHelp(conversationId);
+      }
+
+      res.status(201).json({ success: true, data: message });
+    } catch (err: any) {
+      sendError(res, 500, err.message);
     }
   }
 

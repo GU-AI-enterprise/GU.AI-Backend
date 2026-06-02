@@ -15,6 +15,7 @@ export enum SenderType {
 
 export enum MessageType {
   TEXT = 'text',
+  IMAGE = 'image',
 }
 
 export enum ConversationSource {

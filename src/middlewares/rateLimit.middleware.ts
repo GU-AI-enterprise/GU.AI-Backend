@@ -1,10 +1,21 @@
 import rateLimit from 'express-rate-limit';
+import type { Request, Response, NextFunction, RequestHandler } from 'express';
+import type { AuthRequest } from './auth.middleware';
 
 const json = (message: string) => ({
   success: false,
   error: message,
   retryAfter: undefined as undefined | number,
 });
+
+/** Wraps a rate limiter: skips entirely for staff/admin users (req.user must be set by requireAuth first). */
+export function staffBypass(limiter: RequestHandler): RequestHandler {
+  return (req: Request, res: Response, next: NextFunction) => {
+    const role = (req as AuthRequest).user?.role;
+    if (role === 'staff' || role === 'admin') return next();
+    return limiter(req, res, next);
+  };
+}
 
 function makeLimiter(windowMs: number, max: number, message: string) {
   return rateLimit({

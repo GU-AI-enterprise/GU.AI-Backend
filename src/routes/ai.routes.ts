@@ -2,6 +2,7 @@ import { Router } from 'express';
 import multer from 'multer';
 import { aiController } from '../controllers/ai.controller';
 import { requireAuth } from '../middlewares/auth.middleware';
+import { aiLimiter, staffBypass } from '../middlewares/rateLimit.middleware';
 
 const router = Router();
 
@@ -11,6 +12,7 @@ const upload = multer({
 });
 
 router.use(requireAuth);
+router.use(staffBypass(aiLimiter));
 
 /**
  * @openapi

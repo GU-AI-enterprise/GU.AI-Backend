@@ -62,6 +62,43 @@ export class SocketService {
   }
 
   /**
+   * Notify a customer that a staff/admin replied (badge increment)
+   */
+  static emitSupportNewMessage(userId: string, conversationId: string): void {
+    try {
+      const io = getIO();
+      io.to(`user:${userId}`).emit('support:new_message', { conversationId });
+    } catch {
+      console.warn('[SocketService] Socket.IO not available for support:new_message emit.');
+    }
+  }
+
+  /**
+   * Notify all staff/admin that a customer sent a message (badge increment)
+   */
+  static emitSupportNeedsHelp(conversationId: string): void {
+    try {
+      const io = getIO();
+      io.to('admins').emit('support:needs_help', { conversationId });
+    } catch {
+      console.warn('[SocketService] Socket.IO not available for support:needs_help emit.');
+    }
+  }
+
+  /**
+   * Notify conversation participants that messages have been read
+   * readBy: 'customer' | 'staff'
+   */
+  static emitReadReceipt(conversationId: string, readBy: 'customer' | 'staff'): void {
+    try {
+      const io = getIO();
+      io.to(`conversation:${conversationId}`).emit('support:read_receipt', { conversationId, readBy });
+    } catch {
+      console.warn('[SocketService] Socket.IO not available for support:read_receipt emit.');
+    }
+  }
+
+  /**
    * Broadcast message to a conversation
    */
   static broadcastToConversation(conversationId: string, payload: MessagePayload): void {

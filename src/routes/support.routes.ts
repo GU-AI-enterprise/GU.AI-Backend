@@ -1,11 +1,23 @@
 import { Router } from 'express';
+import multer from 'multer';
 import { SupportController } from '../controllers/support.controller';
 import { requireAuth, requireStaff } from '../middlewares/auth.middleware';
+import { supportLimiter, staffBypass } from '../middlewares/rateLimit.middleware';
+
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 5 * 1024 * 1024 }, // 5 MB
+  fileFilter: (_req, file, cb) => {
+    if (file.mimetype.startsWith('image/')) cb(null, true);
+    else cb(new Error('Only image files are allowed'));
+  },
+});
 
 const router = Router();
 const supportController = new SupportController();
 
 router.use(requireAuth);
+router.use(staffBypass(supportLimiter));
 
 /**
  * @openapi
@@ -54,6 +66,9 @@ router.use(requireAuth);
  *               $ref: '#/components/schemas/ErrorResponse'
  */
 router.get('/me', supportController.getMyConversation.bind(supportController));
+router.get('/badge-count', supportController.getBadgeCount.bind(supportController));
+router.patch('/conversations/:conversationId/read', supportController.markConversationRead.bind(supportController));
+router.post('/conversations/:conversationId/image', upload.single('image'), supportController.uploadSupportImage.bind(supportController));
 
 /**
  * @openapi

@@ -15,7 +15,7 @@ import adminRoutes from './routes/admin.routes';
 import notificationRoutes from './routes/notification.routes';
 import webhookRoutes from './routes/webhook.routes';
 import { setupSwagger } from './config/swagger';
-import { globalLimiter, authLimiter, aiLimiter, supportLimiter } from './middlewares/rateLimit.middleware';
+import { globalLimiter, authLimiter } from './middlewares/rateLimit.middleware';
 
 const app: Application = express();
 
@@ -79,8 +79,8 @@ app.use('/api/images',                  imageRoutes);
 app.use('/api/collections',             collectionRoutes);
 app.use('/api/history',                 historyRoutes);
 app.use('/api/users',                   userRoutes);
-app.use('/api/ai',      aiLimiter,      aiRoutes);
-app.use('/api/support', supportLimiter, supportRoutes);
+app.use('/api/ai',      aiRoutes);
+app.use('/api/support', supportRoutes);
 app.use('/api/admin',                   adminRoutes);
 app.use('/api/notifications',           notificationRoutes);
 app.use('/api/webhooks',                webhookRoutes);
