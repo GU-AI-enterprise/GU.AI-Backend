@@ -16,6 +16,15 @@ export interface MessagePayload {
   timestamp: Date;
 }
 
+export interface AIJobUpdatePayload {
+  jobId: string;
+  status: 'completed' | 'failed';
+  imageUrl?: string;
+  assetId?: string;
+  creditsUsed?: number;
+  error?: string;
+}
+
 export interface MonitoringPayload {
   type: 'system' | 'performance' | 'error' | 'warning';
   metric: string;
@@ -30,6 +39,18 @@ export class SocketService {
   static sendNotification(payload: NotificationPayload): void {
     const io = getIO();
     io.to(`user:${payload.userId}`).emit('notification', payload);
+  }
+
+  /**
+   * Emit AI job completion/failure to the job owner
+   */
+  static emitAIJobUpdate(userId: string, payload: AIJobUpdatePayload): void {
+    try {
+      const io = getIO();
+      io.to(`user:${userId}`).emit('ai_job_update', payload);
+    } catch {
+      console.warn('[SocketService] Socket.IO not available for AI job emit.');
+    }
   }
 
   /**

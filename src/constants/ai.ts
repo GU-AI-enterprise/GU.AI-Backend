@@ -1,9 +1,12 @@
 export enum AIJobType {
   TRY_ON = 'try_on',
+  TRY_ON_MAX = 'try_on_max',
   GENERATE = 'generate',
   EDIT = 'edit',
   REMOVE_BG = 'remove_bg',
   UPSCALE = 'upscale',
+  PRODUCT_TO_MODEL = 'product_to_model',
+  REFRAME = 'reframe',
 }
 
 export enum AIJobStatus {
@@ -20,6 +23,7 @@ export enum AIProvider {
 }
 
 export enum TryOnCategory {
+  AUTO = 'auto',
   TOPS = 'tops',
   BOTTOMS = 'bottoms',
   ONE_PIECES = 'one-pieces',
@@ -31,10 +35,25 @@ export enum TryOnMode {
   SPEED = 'speed',
 }
 
+export enum FashnResolution {
+  ONE_K = '1k',
+  TWO_K = '2k',
+  FOUR_K = '4k',
+}
+
+export enum FashnGenerationMode {
+  FAST = 'fast',
+  BALANCED = 'balanced',
+  QUALITY = 'quality',
+}
+
 export const CREDIT_COST: Record<AIJobType, number> = {
   [AIJobType.TRY_ON]: 10,
+  [AIJobType.TRY_ON_MAX]: 20,
   [AIJobType.GENERATE]: 15,
   [AIJobType.EDIT]: 5,
-  [AIJobType.REMOVE_BG]: 8,
+  [AIJobType.REMOVE_BG]: 3,
   [AIJobType.UPSCALE]: 8,
+  [AIJobType.PRODUCT_TO_MODEL]: 12,
+  [AIJobType.REFRAME]: 5,
 };

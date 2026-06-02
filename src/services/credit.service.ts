@@ -88,6 +88,27 @@ export class CreditService {
   }
 
   /**
+   * Lấy thông tin một AI job theo ID (dùng cho status polling từ frontend).
+   */
+  public static async getJobById(jobId: string): Promise<{
+    id: string;
+    status: string;
+    type: string;
+    credit_cost: number;
+    completed_at: string | null;
+    error_message: string | null;
+  } | null> {
+    const client = this.getClient();
+    const { data, error } = await client
+      .from('ai_jobs')
+      .select('id, status, type, credit_cost, completed_at, error_message')
+      .eq('id', jobId)
+      .single();
+    if (error || !data) return null;
+    return data;
+  }
+
+  /**
    * Tạo AI job record.
    */
   public static async createAIJob(params: {

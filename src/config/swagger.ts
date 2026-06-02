@@ -29,7 +29,52 @@ const options = {
           description: 'Nhập access token JWT của bạn ở định dạng: Bearer <Token>',
         },
       },
+      responses: {
+        Unauthorized: {
+          description: 'Chưa xác thực.',
+          content: { 'application/json': { schema: { '$ref': '#/components/schemas/ErrorResponse' } } },
+        },
+        BadRequest: {
+          description: 'Tham số không hợp lệ hoặc thiếu.',
+          content: { 'application/json': { schema: { '$ref': '#/components/schemas/ErrorResponse' } } },
+        },
+        InsufficientCredits: {
+          description: 'Không đủ credits.',
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                properties: {
+                  success: { type: 'boolean', example: false },
+                  error: { type: 'string', example: 'Credit không đủ. Cần 10, hiện có 5.' },
+                },
+              },
+            },
+          },
+        },
+        ServerError: {
+          description: 'Lỗi máy chủ nội bộ.',
+          content: { 'application/json': { schema: { '$ref': '#/components/schemas/ErrorResponse' } } },
+        },
+      },
       schemas: {
+        AIJobResult: {
+          type: 'object',
+          properties: {
+            success: { type: 'boolean', example: true },
+            message: { type: 'string' },
+            data: {
+              type: 'object',
+              properties: {
+                imageUrl: { type: 'string', description: 'URL ảnh kết quả trên Supabase Storage.' },
+                assetId: { type: 'string', format: 'uuid', description: 'ID asset trong database.' },
+                jobId: { type: 'string', format: 'uuid', description: 'ID AI job.' },
+                predictionId: { type: 'string', description: 'ID prediction từ Fashn.ai.' },
+                creditsUsed: { type: 'integer', description: 'Số credits đã tiêu.' },
+              },
+            },
+          },
+        },
         SuccessResponse: {
           type: 'object',
           properties: {
