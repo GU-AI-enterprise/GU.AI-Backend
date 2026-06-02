@@ -94,6 +94,16 @@ class FashnService {
 
   // ── Core: submit job → get predictionId ──────────────────────────────────────
 
+  /** Public: submit a job to Fashn and return the predictionId, without polling. */
+  public async submitJob(modelName: string, inputs: Record<string, any>): Promise<string> {
+    return this.run(modelName, inputs);
+  }
+
+  /** Public: poll a predictionId until it completes or times out. */
+  public async waitForJob(predictionId: string): Promise<string> {
+    return this.pollUntilDone(predictionId);
+  }
+
   private async run(modelName: string, inputs: Record<string, any>): Promise<string> {
     if (!this.apiKey) throw new Error('FASHN_API_KEY chưa được cấu hình.');
 

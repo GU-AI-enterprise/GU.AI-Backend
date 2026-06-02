@@ -16,6 +16,8 @@ import {
   CREDIT_COST,
 } from '../constants/ai';
 import { AssetCategory, AssetRole } from '../constants/asset';
+import { AdminEventService } from '../services/adminEvent.service';
+import { pendingWebhookJobs } from './webhook.controller';
 
 const VALID_CATEGORIES = Object.values(TryOnCategory);
 const VALID_MODES = Object.values(TryOnMode);
@@ -77,18 +79,68 @@ async function runInBackground(params: {
       assetId: asset.id,
       creditsUsed: cost,
     });
+
+    AdminEventService.emit({
+      type: 'job_completed',
+      message: `Hoàn thành: ${description}`,
+      userId,
+      metadata: { jobId, assetId: asset.id },
+    });
   } catch (err: any) {
     console.error(`[AIController] Background job ${jobId} failed:`, err.message);
-
     await CreditService.updateAIJob(jobId, AIJobStatus.FAILED, err.message).catch(() => {});
-
-    // Refund credits since deduction hasn't happened yet (deduction only occurs on success above)
-    SocketService.emitAIJobUpdate(userId, {
-      jobId,
-      status: 'failed',
-      error: err.message,
+    SocketService.emitAIJobUpdate(userId, { jobId, status: 'failed', error: err.message });
+    AdminEventService.emit({
+      type: 'job_failed',
+      message: `Thất bại: ${description}`,
+      userId,
+      metadata: { jobId, error: err.message },
     });
   }
+}
+
+/**
+ * If SERVER_URL is configured, submit job to Fashn with webhook URL and register
+ * the context so the webhook endpoint can process the result.
+ * Otherwise fall back to in-process polling via runInBackground.
+ */
+async function scheduleJob(params: {
+  userId: string;
+  jobId: string;
+  cost: number;
+  description: string;
+  filePrefix: string;
+  modelName: string;
+  inputs: Record<string, any>;
+  pollingFallback: () => Promise<{ outputUrl: string; predictionId: string }>;
+}): Promise<void> {
+  const { userId, jobId, cost, description, filePrefix, modelName, inputs, pollingFallback } = params;
+  const serverUrl = process.env.SERVER_URL?.replace(/\/$/, '');
+
+  AdminEventService.emit({
+    type: 'job_created',
+    message: `Bắt đầu: ${description}`,
+    userId,
+    metadata: { jobId },
+  });
+
+  if (serverUrl) {
+    try {
+      const webhookUrl = `${serverUrl}/api/webhooks/fashn`;
+      const predictionId = await fashnService.submitJob(modelName, {
+        ...inputs,
+        webhook_url: webhookUrl,
+      });
+      pendingWebhookJobs.set(predictionId, { userId, jobId, cost, description, filePrefix });
+      console.log(`[AIController] Webhook mode — predictionId=${predictionId} → ${webhookUrl}`);
+      return;
+    } catch (err: any) {
+      console.warn('[AIController] Webhook submit failed, falling back to polling:', err.message);
+    }
+  }
+
+  // Polling fallback
+  setImmediate(() => runInBackground({ userId, jobId, cost, description, filePrefix, fashnCall: pollingFallback }));
 }
 
 // ─── Controller ───────────────────────────────────────────────────────────────
@@ -184,15 +236,17 @@ export class AIController {
         inputParams: { category, mode },
       });
 
-      // Return 202 immediately — Fashn runs in background
+      // Return 202 immediately — Fashn runs in background (webhook or polling)
       res.status(202).json({ success: true, message: 'Đang xử lý...', data: { jobId: job.jobId, status: 'processing' } });
 
-      setImmediate(() => runInBackground({
+      scheduleJob({
         userId, jobId: job.jobId, cost,
         description: `Virtual try-on v1.6 (${category})`,
         filePrefix: 'tryon',
-        fashnCall: () => fashnService.tryOn({ modelImage: modelImage!, garmentImage: garmentImage!, category, mode }),
-      }));
+        modelName: 'tryon-v1.6',
+        inputs: { model_image: modelImage, garment_image: garmentImage, category, mode },
+        pollingFallback: () => fashnService.tryOn({ modelImage: modelImage!, garmentImage: garmentImage!, category, mode }),
+      });
     } catch (err: any) {
       console.error('[AIController.tryOn]', err);
       sendError(res, 500, err.message);

@@ -1,11 +1,19 @@
 import { Router } from 'express';
 import { AdminController } from '../controllers/admin.controller';
 import { requireAuth, requireAdmin, requireStaff } from '../middlewares/auth.middleware';
+import { AdminEventService } from '../services/adminEvent.service';
+import { sendSuccess } from '../utils/response';
 
 const router = Router();
 const ctrl = new AdminController();
 
 router.use(requireAuth);
+
+// GET /api/admin/events — recent system events (admin only)
+router.get('/events', requireStaff, (req, res) => {
+  const limit = Math.min(100, parseInt((req.query.limit as string) || '50'));
+  sendSuccess(res, { data: AdminEventService.getRecent(limit) });
+});
 
 /**
  * @openapi
