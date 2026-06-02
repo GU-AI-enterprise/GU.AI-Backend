@@ -4,7 +4,6 @@ import { HistoryService } from '../services/history.service';
 import { sendSuccess, sendError } from '../utils/response';
 
 export class HistoryController {
-  // Lấy toàn bộ lịch sử tác vụ kết hợp của người dùng hiện tại
   public async getHistory(req: AuthRequest, res: Response): Promise<void> {
     try {
       const userId = req.user?.id;
@@ -13,7 +12,18 @@ export class HistoryController {
         return;
       }
 
-      const history = await HistoryService.getUserHistory(userId);
+      const jobPage = Math.max(1, parseInt(req.query.job_page as string) || 1);
+      const jobLimit = Math.min(50, Math.max(1, parseInt(req.query.job_limit as string) || 10));
+      const jobDateFrom = (req.query.job_date_from as string) || undefined;
+      const jobDateTo = (req.query.job_date_to as string) || undefined;
+
+      const history = await HistoryService.getUserHistory(userId, {
+        jobPage,
+        jobLimit,
+        jobDateFrom,
+        jobDateTo,
+      });
+
       sendSuccess(res, {
         message: 'Lấy lịch sử tác vụ thành công.',
         data: history,

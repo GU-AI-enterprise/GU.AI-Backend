@@ -183,7 +183,9 @@ router.get('/stats', requireStaff, ctrl.getStats.bind(ctrl));
  *             schema:
  *               $ref: '#/components/schemas/ErrorResponse'
  */
-router.get('/users', requireStaff, ctrl.listUsers.bind(ctrl));
+router.get('/users',     requireStaff, ctrl.listUsers.bind(ctrl));
+router.get('/users/:id', requireStaff, ctrl.getUserById.bind(ctrl));
+router.get('/jobs/:id',  requireStaff, ctrl.getJobById.bind(ctrl));
 
 /**
  * @openapi
@@ -341,7 +343,7 @@ router.patch('/users/:id/role', requireAdmin, ctrl.updateRole.bind(ctrl));
  *             schema:
  *               $ref: '#/components/schemas/ErrorResponse'
  */
-router.patch('/users/:id/status', requireStaff, ctrl.updateStatus.bind(ctrl));
+router.patch('/users/:id/status', requireAdmin, ctrl.updateStatus.bind(ctrl));
 
 /**
  * @openapi

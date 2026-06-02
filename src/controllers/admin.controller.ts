@@ -69,6 +69,67 @@ export class AdminController {
     }
   }
 
+  public async getUserById(req: AuthRequest, res: Response): Promise<void> {
+    try {
+      if (!supabaseAdmin) { sendError(res, 500, 'Service role not configured'); return; }
+      const { id } = req.params;
+
+      const { data: user, error } = await supabaseAdmin
+        .from('users')
+        .select('id, email, name, avatar_url, role, status, provider, plan_type, current_credit, created_at, updated_at, last_login_at')
+        .eq('id', id)
+        .single();
+
+      if (error || !user) { sendError(res, 404, 'User not found'); return; }
+
+      // Recent AI jobs
+      const { data: jobs } = await supabaseAdmin
+        .from('ai_jobs')
+        .select('id, type, status, credit_cost, created_at, completed_at')
+        .eq('user_id', id)
+        .order('created_at', { ascending: false })
+        .limit(5);
+
+      // Credit ledger summary
+      const { data: ledger } = await supabaseAdmin
+        .from('credit_ledger')
+        .select('type, amount, created_at')
+        .eq('user_id', id)
+        .order('created_at', { ascending: false })
+        .limit(10);
+
+      sendSuccess(res, { data: { user, recentJobs: jobs ?? [], recentLedger: ledger ?? [] } });
+    } catch (err: any) {
+      sendError(res, 500, err.message);
+    }
+  }
+
+  public async getJobById(req: AuthRequest, res: Response): Promise<void> {
+    try {
+      if (!supabaseAdmin) { sendError(res, 500, 'Service role not configured'); return; }
+      const { id } = req.params;
+
+      const { data: job, error } = await supabaseAdmin
+        .from('ai_jobs')
+        .select('id, type, status, credit_cost, input_params, error_message, created_at, started_at, completed_at, provider, user_id')
+        .eq('id', id)
+        .single();
+
+      if (error || !job) { sendError(res, 404, 'Job not found'); return; }
+
+      // Output assets
+      const { data: assets } = await supabaseAdmin
+        .from('ai_job_assets')
+        .select('role, asset:assets(id, url, thumbnail_url, type)')
+        .eq('job_id', id)
+        .eq('role', 'output');
+
+      sendSuccess(res, { data: { job, outputAssets: assets ?? [] } });
+    } catch (err: any) {
+      sendError(res, 500, err.message);
+    }
+  }
+
   public async getStats(req: AuthRequest, res: Response): Promise<void> {
     try {
       if (!supabaseAdmin) {

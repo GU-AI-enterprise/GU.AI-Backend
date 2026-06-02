@@ -104,11 +104,19 @@ export class SupportController {
       }
       if (!this.ensureAdminClient(res)) return;
 
-      const status = typeof req.query.status === 'string' ? req.query.status : undefined;
+      const status   = typeof req.query.status === 'string' ? req.query.status : undefined;
+      const userRole = (req.user as any).role as string;
+
       let query = supabaseAdmin!
         .from('support_conversations')
         .select(SUPPORT_CONVERSATION_SELECT)
         .order('last_message_at', { ascending: false, nullsFirst: false });
+
+      // Staff only see conversations assigned to them or unassigned
+      // Admin sees everything
+      if (userRole === 'staff') {
+        query = query.or(`assigned_staff_id.eq.${req.user!.id},assigned_staff_id.is.null`);
+      }
 
       if (status && status !== 'all') {
         query = query.eq('status', status);
