@@ -1,0 +1,9 @@
+-- NOT NEEDED: admin events are stored in the existing activity_logs table.
+-- AdminEventService writes to activity_logs with:
+--   action = event type (job_created / job_completed / job_failed / ...)
+--   target_type = 'ai_job'
+--   target_id   = jobId
+--   metadata    = { message, jobId, assetId, error, ... }
+--   actor_role  = 'customer' (if userId present) | 'system'
+--
+-- No new table or migration required.

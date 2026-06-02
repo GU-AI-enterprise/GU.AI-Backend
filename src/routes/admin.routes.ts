@@ -9,10 +9,20 @@ const ctrl = new AdminController();
 
 router.use(requireAuth);
 
-// GET /api/admin/events — recent system events (admin only)
-router.get('/events', requireStaff, (req, res) => {
-  const limit = Math.min(100, parseInt((req.query.limit as string) || '50'));
-  sendSuccess(res, { data: AdminEventService.getRecent(limit) });
+// GET /api/admin/events — events by date with pagination + daily stats
+router.get('/events', requireStaff, async (req, res) => {
+  try {
+    const today = new Date().toISOString().slice(0, 10); // YYYY-MM-DD UTC
+    const date   = (req.query.date   as string) || today;
+    const limit  = Math.min(100, parseInt((req.query.limit  as string) || '20'));
+    const offset = Math.max(0,   parseInt((req.query.offset as string) || '0'));
+
+    const result = await AdminEventService.query({ date, limit, offset });
+    sendSuccess(res, { data: result });
+  } catch (err: any) {
+    // Fallback to in-memory if DB not ready
+    sendSuccess(res, { data: { events: AdminEventService.getRecent(20), stats: { total: 0, job_created: 0, job_completed: 0, job_failed: 0 }, hasMore: false } });
+  }
 });
 
 /**

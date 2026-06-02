@@ -39,7 +39,7 @@ CREATE TABLE public.ai_job_logs (
 CREATE TABLE public.ai_jobs (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
   user_id uuid NOT NULL,
-  type character varying NOT NULL CHECK (type::text = ANY (ARRAY['try_on'::character varying, 'generate'::character varying, 'edit'::character varying, 'remove_bg'::character varying, 'upscale'::character varying]::text[])),
+  type character varying NOT NULL CHECK (type::text = ANY (ARRAY['try_on'::character varying, 'try_on_max'::character varying, 'generate'::character varying, 'edit'::character varying, 'remove_bg'::character varying, 'upscale'::character varying, 'product_to_model'::character varying, 'reframe'::character varying, 'face_swap'::character varying, 'model_swap'::character varying, 'create_model'::character varying, 'image_to_video'::character varying]::text[])),
   status character varying NOT NULL DEFAULT 'queued'::character varying CHECK (status::text = ANY (ARRAY['queued'::character varying, 'processing'::character varying, 'completed'::character varying, 'failed'::character varying, 'cancelled'::character varying]::text[])),
   prompt text,
   negative_prompt text,
