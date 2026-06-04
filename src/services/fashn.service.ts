@@ -64,6 +64,41 @@ export interface EditImageOptions {
   generationMode?: FashnGenerationMode;
 }
 
+export interface FaceToModelOptions {
+  /** Ảnh mặt / headshot */
+  faceImage: string;
+  prompt?: string;
+  aspectRatio?: string;
+  resolution?: FashnResolution;
+  generationMode?: FashnGenerationMode;
+}
+
+export interface ModelCreateOptions {
+  /** Prompt mô tả model thời trang muốn tạo */
+  prompt: string;
+  /** Ảnh tham chiếu về pose/composition (tuỳ chọn) */
+  imageReference?: string;
+  aspectRatio?: string;
+  resolution?: FashnResolution;
+  generationMode?: FashnGenerationMode;
+}
+
+export interface ModelSwapOptions {
+  /** Ảnh thời trang với model hiện tại */
+  modelImage: string;
+  prompt?: string;
+  resolution?: FashnResolution;
+  generationMode?: FashnGenerationMode;
+}
+
+export interface ImageToVideoOptions {
+  image: string;
+  prompt?: string;
+  duration?: 5 | 10;
+  /** 480p | 720p | 1080p */
+  resolution?: string;
+}
+
 // ─── Fashn status response type ────────────────────────────────────────────────
 
 interface FashnStatusResponse {
@@ -247,6 +282,60 @@ class FashnService {
     if (options.generationMode) inputs.generation_mode = options.generationMode;
 
     const predictionId = await this.run('edit', inputs);
+    const outputUrl = await this.pollUntilDone(predictionId);
+    return { outputUrl, predictionId };
+  }
+
+  // ── Face to Model ────────────────────────────────────────────────────────────
+
+  public async faceToModel(options: FaceToModelOptions): Promise<FashnResult> {
+    const inputs: Record<string, any> = { face_image: options.faceImage };
+    if (options.prompt) inputs.prompt = options.prompt;
+    if (options.aspectRatio) inputs.aspect_ratio = options.aspectRatio;
+    if (options.resolution) inputs.resolution = options.resolution;
+    if (options.generationMode) inputs.generation_mode = options.generationMode;
+
+    const predictionId = await this.run('face-to-model', inputs);
+    const outputUrl = await this.pollUntilDone(predictionId);
+    return { outputUrl, predictionId };
+  }
+
+  // ── Model Create ─────────────────────────────────────────────────────────────
+
+  public async modelCreate(options: ModelCreateOptions): Promise<FashnResult> {
+    const inputs: Record<string, any> = { prompt: options.prompt };
+    if (options.imageReference) inputs.image_reference = options.imageReference;
+    if (options.aspectRatio) inputs.aspect_ratio = options.aspectRatio;
+    if (options.resolution) inputs.resolution = options.resolution;
+    if (options.generationMode) inputs.generation_mode = options.generationMode;
+
+    const predictionId = await this.run('model-create', inputs);
+    const outputUrl = await this.pollUntilDone(predictionId);
+    return { outputUrl, predictionId };
+  }
+
+  // ── Model Swap ───────────────────────────────────────────────────────────────
+
+  public async modelSwap(options: ModelSwapOptions): Promise<FashnResult> {
+    const inputs: Record<string, any> = { model_image: options.modelImage };
+    if (options.prompt) inputs.prompt = options.prompt;
+    if (options.resolution) inputs.resolution = options.resolution;
+    if (options.generationMode) inputs.generation_mode = options.generationMode;
+
+    const predictionId = await this.run('model-swap', inputs);
+    const outputUrl = await this.pollUntilDone(predictionId);
+    return { outputUrl, predictionId };
+  }
+
+  // ── Image to Video ───────────────────────────────────────────────────────────
+
+  public async imageToVideo(options: ImageToVideoOptions): Promise<FashnResult> {
+    const inputs: Record<string, any> = { image: options.image };
+    if (options.prompt) inputs.prompt = options.prompt;
+    if (options.duration) inputs.duration = options.duration;
+    if (options.resolution) inputs.resolution = options.resolution;
+
+    const predictionId = await this.run('image-to-video', inputs);
     const outputUrl = await this.pollUntilDone(predictionId);
     return { outputUrl, predictionId };
   }

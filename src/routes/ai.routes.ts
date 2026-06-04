@@ -527,4 +527,28 @@ router.post(
   aiController.editImage.bind(aiController)
 );
 
+router.post(
+  '/face-to-model',
+  upload.fields([{ name: 'faceImage', maxCount: 1 }]),
+  aiController.faceToModel.bind(aiController)
+);
+
+router.post(
+  '/model-create',
+  upload.fields([{ name: 'imageReference', maxCount: 1 }]),
+  aiController.modelCreate.bind(aiController)
+);
+
+router.post(
+  '/model-swap',
+  upload.fields([{ name: 'modelImage', maxCount: 1 }]),
+  aiController.modelSwap.bind(aiController)
+);
+
+router.post(
+  '/image-to-video',
+  upload.fields([{ name: 'image', maxCount: 1 }]),
+  aiController.imageToVideo.bind(aiController)
+);
+
 export default router;

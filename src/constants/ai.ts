@@ -7,6 +7,10 @@ export enum AIJobType {
   UPSCALE = 'upscale',
   PRODUCT_TO_MODEL = 'product_to_model',
   REFRAME = 'reframe',
+  FACE_TO_MODEL = 'face_to_model',
+  MODEL_CREATE = 'model_create',
+  MODEL_SWAP = 'model_swap',
+  IMAGE_TO_VIDEO = 'image_to_video',
 }
 
 export enum AIJobStatus {
@@ -56,4 +60,8 @@ export const CREDIT_COST: Record<AIJobType, number> = {
   [AIJobType.UPSCALE]: 8,
   [AIJobType.PRODUCT_TO_MODEL]: 12,
   [AIJobType.REFRAME]: 5,
+  [AIJobType.FACE_TO_MODEL]: 8,
+  [AIJobType.MODEL_CREATE]: 20,
+  [AIJobType.MODEL_SWAP]: 12,
+  [AIJobType.IMAGE_TO_VIDEO]: 25,
 };

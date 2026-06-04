@@ -2,7 +2,9 @@ import { Router } from 'express';
 import { AdminController } from '../controllers/admin.controller';
 import { requireAuth, requireAdmin, requireStaff } from '../middlewares/auth.middleware';
 import { AdminEventService } from '../services/adminEvent.service';
-import { sendSuccess } from '../utils/response';
+import { ImageService } from '../services/image.service';
+import { runCleanupNow } from '../jobs/cleanup.job';
+import { sendSuccess, sendError } from '../utils/response';
 
 const router = Router();
 const ctrl = new AdminController();
@@ -499,5 +501,24 @@ router.delete('/users/:id', requireAdmin, ctrl.deleteUser.bind(ctrl));
  *               $ref: '#/components/schemas/ErrorResponse'
  */
 router.post('/users/:id/credits', requireStaff, ctrl.awardCredits.bind(ctrl));
+
+// ── Trash management (Admin/Staff) ────────────────────────────────────────────
+router.get('/archive/stats', requireStaff, async (_req, res) => {
+  try {
+    const stats = await ImageService.getArchiveStats();
+    sendSuccess(res, { data: stats });
+  } catch (err: any) {
+    sendError(res, 500, err.message);
+  }
+});
+
+router.post('/archive/cleanup', requireAdmin, async (_req, res) => {
+  try {
+    const result = await runCleanupNow();
+    sendSuccess(res, { message: `Cleanup hoàn thành — đã xóa ${result.deletedCount} ảnh hết hạn.`, data: result });
+  } catch (err: any) {
+    sendError(res, 500, err.message);
+  }
+});
 
 export default router;

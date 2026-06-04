@@ -522,6 +522,125 @@ export class AIController {
       sendError(res, 500, err.message);
     }
   }
+
+  // ── POST /api/ai/face-to-model ────────────────────────────────────────────────
+
+  public async faceToModel(req: AuthRequest, res: Response): Promise<void> {
+    const cost = CREDIT_COST[AIJobType.FACE_TO_MODEL];
+    try {
+      const userId = req.user?.id;
+      if (!userId) { sendError(res, 401, 'Không tìm thấy thông tin xác thực người dùng.'); return; }
+
+      const files = (req as any).files as Record<string, Express.Multer.File[]> | undefined;
+      const faceImageFile = files?.['faceImage']?.[0];
+      const faceImage = faceImageFile
+        ? `data:${faceImageFile.mimetype};base64,${faceImageFile.buffer.toString('base64')}`
+        : (req.body.faceImageUrl as string | undefined);
+      if (!faceImage) { sendError(res, 400, 'Cần cung cấp faceImage hoặc faceImageUrl.'); return; }
+
+      const prompt: string | undefined = req.body.prompt?.trim() || undefined;
+      const aspectRatio: string | undefined = req.body.aspectRatio || undefined;
+      const resolution: FashnResolution = req.body.resolution || FashnResolution.ONE_K;
+
+      const creditCheck = await CreditService.checkCredit(userId, cost);
+      if (!creditCheck.ok) { sendError(res, 402, `Credit không đủ. Cần ${cost}, hiện có ${creditCheck.userCredit}.`); return; }
+
+      const job = await CreditService.createAIJob({ userId, type: AIJobType.FACE_TO_MODEL, prompt: prompt || 'Face to model', creditCost: cost, provider: AIProvider.FASHN, inputParams: { resolution, aspectRatio } });
+      res.status(202).json({ success: true, message: 'Đang xử lý...', data: { jobId: job.jobId, status: 'processing' } });
+
+      scheduleJob({ userId, jobId: job.jobId, cost, description: 'Face to model', filePrefix: 'face_to_model', modelName: 'face-to-model', inputs: { face_image: faceImage, prompt, aspect_ratio: aspectRatio, resolution }, pollingFallback: () => fashnService.faceToModel({ faceImage: faceImage!, prompt, aspectRatio, resolution }) });
+    } catch (err: any) { console.error('[AIController.faceToModel]', err); sendError(res, 500, err.message); }
+  }
+
+  // ── POST /api/ai/model-create ─────────────────────────────────────────────────
+
+  public async modelCreate(req: AuthRequest, res: Response): Promise<void> {
+    const cost = CREDIT_COST[AIJobType.MODEL_CREATE];
+    try {
+      const userId = req.user?.id;
+      if (!userId) { sendError(res, 401, 'Không tìm thấy thông tin xác thực người dùng.'); return; }
+
+      const prompt: string = req.body.prompt?.trim();
+      if (!prompt) { sendError(res, 400, 'Cần cung cấp prompt mô tả model.'); return; }
+
+      const files = (req as any).files as Record<string, Express.Multer.File[]> | undefined;
+      const refFile = files?.['imageReference']?.[0];
+      const imageReference = refFile
+        ? `data:${refFile.mimetype};base64,${refFile.buffer.toString('base64')}`
+        : (req.body.imageReferenceUrl as string | undefined);
+
+      const aspectRatio: string | undefined = req.body.aspectRatio || undefined;
+      const resolution: FashnResolution = req.body.resolution || FashnResolution.ONE_K;
+      const generationMode: FashnGenerationMode = req.body.generationMode || FashnGenerationMode.BALANCED;
+
+      const creditCheck = await CreditService.checkCredit(userId, cost);
+      if (!creditCheck.ok) { sendError(res, 402, `Credit không đủ. Cần ${cost}, hiện có ${creditCheck.userCredit}.`); return; }
+
+      const job = await CreditService.createAIJob({ userId, type: AIJobType.MODEL_CREATE, prompt, creditCost: cost, provider: AIProvider.FASHN, inputParams: { resolution, generationMode, aspectRatio } });
+      res.status(202).json({ success: true, message: 'Đang xử lý...', data: { jobId: job.jobId, status: 'processing' } });
+
+      scheduleJob({ userId, jobId: job.jobId, cost, description: `Create model: ${prompt.slice(0, 60)}`, filePrefix: 'model_create', modelName: 'model-create', inputs: { prompt, image_reference: imageReference, aspect_ratio: aspectRatio, resolution, generation_mode: generationMode }, pollingFallback: () => fashnService.modelCreate({ prompt, imageReference, aspectRatio, resolution, generationMode }) });
+    } catch (err: any) { console.error('[AIController.modelCreate]', err); sendError(res, 500, err.message); }
+  }
+
+  // ── POST /api/ai/model-swap ───────────────────────────────────────────────────
+
+  public async modelSwap(req: AuthRequest, res: Response): Promise<void> {
+    const cost = CREDIT_COST[AIJobType.MODEL_SWAP];
+    try {
+      const userId = req.user?.id;
+      if (!userId) { sendError(res, 401, 'Không tìm thấy thông tin xác thực người dùng.'); return; }
+
+      const files = (req as any).files as Record<string, Express.Multer.File[]> | undefined;
+      const modelImageFile = files?.['modelImage']?.[0];
+      const modelImage = modelImageFile
+        ? `data:${modelImageFile.mimetype};base64,${modelImageFile.buffer.toString('base64')}`
+        : (req.body.modelImageUrl as string | undefined);
+      if (!modelImage) { sendError(res, 400, 'Cần cung cấp modelImage hoặc modelImageUrl.'); return; }
+
+      const prompt: string | undefined = req.body.prompt?.trim() || undefined;
+      const resolution: FashnResolution = req.body.resolution || FashnResolution.ONE_K;
+      const generationMode: FashnGenerationMode = req.body.generationMode || FashnGenerationMode.BALANCED;
+
+      const creditCheck = await CreditService.checkCredit(userId, cost);
+      if (!creditCheck.ok) { sendError(res, 402, `Credit không đủ. Cần ${cost}, hiện có ${creditCheck.userCredit}.`); return; }
+
+      const job = await CreditService.createAIJob({ userId, type: AIJobType.MODEL_SWAP, prompt: prompt || 'Model swap', creditCost: cost, provider: AIProvider.FASHN, inputParams: { resolution, generationMode } });
+      res.status(202).json({ success: true, message: 'Đang xử lý...', data: { jobId: job.jobId, status: 'processing' } });
+
+      scheduleJob({ userId, jobId: job.jobId, cost, description: 'Model swap', filePrefix: 'model_swap', modelName: 'model-swap', inputs: { model_image: modelImage, prompt, resolution, generation_mode: generationMode }, pollingFallback: () => fashnService.modelSwap({ modelImage: modelImage!, prompt, resolution, generationMode }) });
+    } catch (err: any) { console.error('[AIController.modelSwap]', err); sendError(res, 500, err.message); }
+  }
+
+  // ── POST /api/ai/image-to-video ───────────────────────────────────────────────
+
+  public async imageToVideo(req: AuthRequest, res: Response): Promise<void> {
+    const cost = CREDIT_COST[AIJobType.IMAGE_TO_VIDEO];
+    try {
+      const userId = req.user?.id;
+      if (!userId) { sendError(res, 401, 'Không tìm thấy thông tin xác thực người dùng.'); return; }
+
+      const files = (req as any).files as Record<string, Express.Multer.File[]> | undefined;
+      const imageFile = files?.['image']?.[0];
+      const image = imageFile
+        ? `data:${imageFile.mimetype};base64,${imageFile.buffer.toString('base64')}`
+        : (req.body.imageUrl as string | undefined);
+      if (!image) { sendError(res, 400, 'Cần cung cấp image hoặc imageUrl.'); return; }
+
+      const prompt: string | undefined = req.body.prompt?.trim() || undefined;
+      const duration: 5 | 10 = Number(req.body.duration) === 10 ? 10 : 5;
+      const resolution: string = req.body.resolution || '720p';
+
+      const creditCheck = await CreditService.checkCredit(userId, cost);
+      if (!creditCheck.ok) { sendError(res, 402, `Credit không đủ. Cần ${cost}, hiện có ${creditCheck.userCredit}.`); return; }
+
+      const job = await CreditService.createAIJob({ userId, type: AIJobType.IMAGE_TO_VIDEO, prompt: prompt || 'Image to video', creditCost: cost, provider: AIProvider.FASHN, inputParams: { duration, resolution } });
+      res.status(202).json({ success: true, message: 'Đang xử lý...', data: { jobId: job.jobId, status: 'processing' } });
+
+      // Image to video output is MP4 — download and save as video asset
+      scheduleJob({ userId, jobId: job.jobId, cost, description: 'Image to video', filePrefix: 'video', modelName: 'image-to-video', inputs: { image, prompt, duration, resolution }, pollingFallback: () => fashnService.imageToVideo({ image: image!, prompt, duration, resolution }) });
+    } catch (err: any) { console.error('[AIController.imageToVideo]', err); sendError(res, 500, err.message); }
+  }
 }
 
 export const aiController = new AIController();

@@ -45,7 +45,7 @@ export class CollectionService {
       .from('collections')
       .select(`
         *,
-        cover_asset:assets!cover_asset_id(id, url, thumbnail_url)
+        cover_asset:assets!cover_asset_id(id, url, thumbnail_url, status)
       `)
       .eq('user_id', userId)
       .order('created_at', { ascending: false });
@@ -189,7 +189,7 @@ export class CollectionService {
       .from('collections')
       .select(`
         *,
-        cover_asset:assets!cover_asset_id(id, url, thumbnail_url)
+        cover_asset:assets!cover_asset_id(id, url, thumbnail_url, status)
       `)
       .eq('id', collectionId)
       .eq('user_id', userId)
