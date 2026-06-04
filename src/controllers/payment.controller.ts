@@ -91,10 +91,41 @@ export class PaymentController {
         return;
       }
 
+      const now = new Date().toISOString();
       await supabaseAdmin!
         .from('transactions')
-        .update({ payment_url: result.data.checkoutUrl, updated_at: new Date().toISOString() })
+        .update({ payment_url: result.data.checkoutUrl, updated_at: now })
         .eq('id', tx.id);
+
+      // Fetch user info for admin real-time event
+      const { data: userRow } = await supabaseAdmin!
+        .from('users')
+        .select('id, email, name, avatar_url, current_credit')
+        .eq('id', userId)
+        .single();
+
+      AdminEventService.emit({
+        type: 'payment_created',
+        message: `Giao dịch mới: ${pkg.name} — ${Number(pkg.price).toLocaleString('vi-VN')}đ`,
+        userId,
+        metadata: {
+          transaction: {
+            id: tx.id,
+            amount: pkg.price,
+            status: 'pending',
+            provider: 'payos',
+            provider_transaction_id: String(orderCode),
+            payment_url: result.data.checkoutUrl,
+            paid_at: null,
+            created_at: now,
+            updated_at: now,
+            user: userRow
+              ? { id: userRow.id, email: userRow.email, name: userRow.name, avatar_url: userRow.avatar_url, current_credit: userRow.current_credit }
+              : null,
+            package: { name: pkg.name, credit_amount: pkg.credit_amount, bonus_credit: pkg.bonus_credit },
+          },
+        },
+      });
 
       res.json({
         success: true,
@@ -243,10 +274,16 @@ export class PaymentController {
       });
 
       AdminEventService.emit({
-        type: 'user_action',
+        type: 'payment_updated',
         message: `Thanh toán thành công: ${packageName} (+${totalCredits} credits)`,
         userId,
-        metadata: { transactionId: tx.id, amount: tx.amount, credits: totalCredits },
+        metadata: {
+          transactionId: tx.id,
+          status: 'success',
+          paid_at: new Date().toISOString(),
+          amount: tx.amount,
+          credits: totalCredits,
+        },
       });
 
       console.log(`[PaymentController] processPayment: user=${userId} +${totalCredits} credits (order=${orderCode})`);

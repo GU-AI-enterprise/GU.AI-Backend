@@ -191,10 +191,16 @@ export class WebhookController {
       });
 
       AdminEventService.emit({
-        type: 'user_action',
+        type: 'payment_updated',
         message: `Thanh toán thành công: ${packageName} (+${totalCredits} credits)`,
         userId: tx.user_id,
-        metadata: { transactionId: tx.id, amount: tx.amount, credits: totalCredits },
+        metadata: {
+          transactionId: tx.id,
+          status: 'success',
+          paid_at: new Date().toISOString(),
+          amount: tx.amount,
+          credits: totalCredits,
+        },
       });
 
       console.log(`[WebhookController] PayOS: user=${tx.user_id} +${totalCredits} credits (order=${orderCode})`);

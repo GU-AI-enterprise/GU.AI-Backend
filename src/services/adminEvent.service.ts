@@ -6,7 +6,9 @@ export type AdminEventType =
   | 'job_completed'
   | 'job_failed'
   | 'user_action'
-  | 'system';
+  | 'system'
+  | 'payment_created'
+  | 'payment_updated';
 
 export interface AdminEvent {
   id: string;
