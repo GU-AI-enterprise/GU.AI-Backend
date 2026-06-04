@@ -160,26 +160,15 @@ export class WebhookController {
       const totalCredits = (pkg?.credit_amount ?? 0) + (pkg?.bonus_credit ?? 0);
       const packageName = pkg?.name ?? 'Credit Package';
 
-      // Read current balance to compute balance_after
-      const { data: user } = await supabaseAdmin!
+      // The DB trigger (trg_transactions_before_insert_update → create_ledger_for_success_transaction)
+      // already inserted credit_ledger and incremented users.current_credit via apply_credit_ledger.
+      // DO NOT insert credit_ledger manually — that would double the credit.
+      const { data: updatedUser } = await supabaseAdmin!
         .from('users')
         .select('current_credit')
         .eq('id', tx.user_id)
         .single();
-
-      const balanceAfter = (user?.current_credit ?? 0) + totalCredits;
-
-      // Insert into credit_ledger with type 'purchase' — trigger updates users.current_credit
-      await supabaseAdmin!
-        .from('credit_ledger')
-        .insert({
-          user_id: tx.user_id,
-          transaction_id: tx.id,
-          type: 'purchase',
-          amount: totalCredits,
-          balance_after: balanceAfter,
-          description: `Mua gói ${packageName}`,
-        });
+      const newBalance = updatedUser?.current_credit ?? 0;
 
       // Notify user via socket
       SocketService.sendNotification({
@@ -187,7 +176,7 @@ export class WebhookController {
         type: 'success',
         title: 'Thanh toán thành công',
         message: `Bạn đã nhận được ${totalCredits} credits từ gói ${packageName}`,
-        data: { transactionId: tx.id, credits: totalCredits, newBalance: balanceAfter },
+        data: { transactionId: tx.id, credits: totalCredits, newBalance },
       });
 
       AdminEventService.emit({
