@@ -45,16 +45,17 @@ export class ImageService {
     return data;
   }
 
-  // 2. Lấy ảnh active
-  public static async getUserImages(userId: string) {
+  // 2. Lấy ảnh active (tuỳ chọn lọc theo category)
+  public static async getUserImages(userId: string, category?: string) {
     const client = this.getClient();
-    const { data, error } = await client
+    let query = client
       .from('assets')
       .select('*')
       .eq('user_id', userId)
       .eq('type', 'image')
-      .eq('status', 'active')
-      .order('created_at', { ascending: false });
+      .eq('status', 'active');
+    if (category) query = query.eq('category', category);
+    const { data, error } = await query.order('created_at', { ascending: false });
     if (error) throw new Error(`Lỗi khi lấy danh sách ảnh: ${error.message}`);
     return data;
   }

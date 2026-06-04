@@ -42,11 +42,20 @@ export interface TryOnMaxOptions {
 export interface ProductToModelOptions {
   productImage: string;
   prompt?: string;
+  /** Ảnh gợi ý pose/môi trường/ánh sáng */
+  imagePrompt?: string;
+  /** Ảnh mặt tham chiếu — giữ identity cụ thể (+3 credits/output) */
+  faceReference?: string;
+  /** Cách áp dụng face reference */
+  faceReferenceMode?: 'match_base' | 'match_reference';
+  /** Ảnh nền tham chiếu */
+  backgroundReference?: string;
   aspectRatio?: string;
   resolution?: FashnResolution;
   generationMode?: FashnGenerationMode;
-  /** URL ảnh mặt tham chiếu (thêm ~3 Fashn credits) */
-  faceReference?: string;
+  seed?: number;
+  numImages?: number;
+  outputFormat?: 'png' | 'jpeg';
 }
 
 export interface ReframeOptions {
@@ -87,8 +96,13 @@ export interface ModelSwapOptions {
   /** Ảnh thời trang với model hiện tại */
   modelImage: string;
   prompt?: string;
+  faceReference?: string;
+  faceReferenceMode?: 'match_base' | 'match_reference';
   resolution?: FashnResolution;
   generationMode?: FashnGenerationMode;
+  seed?: number;
+  numImages?: number;
+  outputFormat?: 'png' | 'jpeg';
 }
 
 export interface ImageToVideoOptions {
@@ -242,14 +256,18 @@ class FashnService {
   // ── Product to Model ─────────────────────────────────────────────────────────
 
   public async productToModel(options: ProductToModelOptions): Promise<FashnResult> {
-    const inputs: Record<string, any> = {
-      product_image: options.productImage,
-    };
-    if (options.prompt) inputs.prompt = options.prompt;
-    if (options.aspectRatio) inputs.aspect_ratio = options.aspectRatio;
-    if (options.resolution) inputs.resolution = options.resolution;
-    if (options.generationMode) inputs.generation_mode = options.generationMode;
-    if (options.faceReference) inputs.face_reference = options.faceReference;
+    const inputs: Record<string, any> = { product_image: options.productImage };
+    if (options.prompt)             inputs.prompt               = options.prompt;
+    if (options.imagePrompt)        inputs.image_prompt         = options.imagePrompt;
+    if (options.faceReference)      inputs.face_reference       = options.faceReference;
+    if (options.faceReferenceMode)  inputs.face_reference_mode  = options.faceReferenceMode;
+    if (options.backgroundReference)inputs.background_reference = options.backgroundReference;
+    if (options.aspectRatio)        inputs.aspect_ratio         = options.aspectRatio;
+    if (options.resolution)         inputs.resolution           = options.resolution;
+    if (options.generationMode)     inputs.generation_mode      = options.generationMode;
+    if (options.seed !== undefined)  inputs.seed                 = options.seed;
+    if (options.numImages)          inputs.num_images           = options.numImages;
+    if (options.outputFormat)       inputs.output_format        = options.outputFormat;
 
     const predictionId = await this.run('product-to-model', inputs);
     const outputUrl = await this.pollUntilDone(predictionId);
@@ -318,9 +336,14 @@ class FashnService {
 
   public async modelSwap(options: ModelSwapOptions): Promise<FashnResult> {
     const inputs: Record<string, any> = { model_image: options.modelImage };
-    if (options.prompt) inputs.prompt = options.prompt;
-    if (options.resolution) inputs.resolution = options.resolution;
-    if (options.generationMode) inputs.generation_mode = options.generationMode;
+    if (options.prompt)            inputs.prompt               = options.prompt;
+    if (options.faceReference)     inputs.face_reference       = options.faceReference;
+    if (options.faceReferenceMode) inputs.face_reference_mode  = options.faceReferenceMode;
+    if (options.resolution)        inputs.resolution           = options.resolution;
+    if (options.generationMode)    inputs.generation_mode      = options.generationMode;
+    if (options.seed !== undefined) inputs.seed                = options.seed;
+    if (options.numImages)         inputs.num_images           = options.numImages;
+    if (options.outputFormat)      inputs.output_format        = options.outputFormat;
 
     const predictionId = await this.run('model-swap', inputs);
     const outputUrl = await this.pollUntilDone(predictionId);

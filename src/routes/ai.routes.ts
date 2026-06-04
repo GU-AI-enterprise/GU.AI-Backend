@@ -385,7 +385,12 @@ router.post(
  */
 router.post(
   '/product-to-model',
-  upload.fields([{ name: 'productImage', maxCount: 1 }]),
+  upload.fields([
+    { name: 'productImage',        maxCount: 1 },
+    { name: 'imagePrompt',         maxCount: 1 },
+    { name: 'faceReference',       maxCount: 1 },
+    { name: 'backgroundReference', maxCount: 1 },
+  ]),
   aiController.productToModel.bind(aiController)
 );
 
@@ -541,7 +546,10 @@ router.post(
 
 router.post(
   '/model-swap',
-  upload.fields([{ name: 'modelImage', maxCount: 1 }]),
+  upload.fields([
+    { name: 'modelImage',    maxCount: 1 },
+    { name: 'faceReference', maxCount: 1 },
+  ]),
   aiController.modelSwap.bind(aiController)
 );
 

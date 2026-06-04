@@ -363,7 +363,7 @@ export class AIController {
       const userId = req.user?.id;
       if (!userId) { sendError(res, 401, 'Không tìm thấy thông tin xác thực người dùng.'); return; }
 
-      const resolution: FashnResolution = req.body.resolution || FashnResolution.ONE_K;
+      const resolution: FashnResolution    = req.body.resolution     || FashnResolution.ONE_K;
       const generationMode: FashnGenerationMode = req.body.generationMode || FashnGenerationMode.BALANCED;
 
       if (!VALID_RESOLUTIONS.includes(resolution)) {
@@ -374,17 +374,34 @@ export class AIController {
       }
 
       const files = (req as any).files as Record<string, Express.Multer.File[]> | undefined;
-      const productImageFile = files?.['productImage']?.[0];
 
-      const productImage = productImageFile
-        ? `data:${productImageFile.mimetype};base64,${productImageFile.buffer.toString('base64')}`
+      const toBase64 = (file: Express.Multer.File) =>
+        `data:${file.mimetype};base64,${file.buffer.toString('base64')}`;
+
+      const productImage = files?.['productImage']?.[0]
+        ? toBase64(files['productImage'][0])
         : (req.body.productImageUrl as string | undefined);
-
       if (!productImage) { sendError(res, 400, 'Cần cung cấp productImage (file) hoặc productImageUrl.'); return; }
 
-      const prompt: string | undefined = req.body.prompt?.trim() || undefined;
-      const aspectRatio: string | undefined = req.body.aspectRatio || undefined;
-      const faceReference: string | undefined = req.body.faceReferenceUrl || undefined;
+      const imagePrompt = files?.['imagePrompt']?.[0]
+        ? toBase64(files['imagePrompt'][0])
+        : (req.body.imagePromptUrl as string | undefined);
+
+      const faceReference = files?.['faceReference']?.[0]
+        ? toBase64(files['faceReference'][0])
+        : (req.body.faceReferenceUrl as string | undefined);
+
+      const backgroundReference = files?.['backgroundReference']?.[0]
+        ? toBase64(files['backgroundReference'][0])
+        : (req.body.backgroundReferenceUrl as string | undefined);
+
+      const prompt: string | undefined              = req.body.prompt?.trim() || undefined;
+      const aspectRatio: string | undefined         = req.body.aspectRatio || undefined;
+      const faceReferenceMode: 'match_base' | 'match_reference' | undefined =
+        ['match_base', 'match_reference'].includes(req.body.faceReferenceMode)
+          ? req.body.faceReferenceMode : undefined;
+      const numImages: number = Math.min(4, Math.max(1, parseInt(req.body.numImages) || 1));
+      const seed: number | undefined = req.body.seed ? parseInt(req.body.seed) : undefined;
 
       const creditCheck = await CreditService.checkCredit(userId, cost);
       if (!creditCheck.ok) {
@@ -395,17 +412,34 @@ export class AIController {
         userId, type: AIJobType.PRODUCT_TO_MODEL,
         prompt: prompt || 'Product to model',
         creditCost: cost, provider: AIProvider.FASHN,
-        inputParams: { resolution, generationMode, aspectRatio },
+        inputParams: { resolution, generationMode, aspectRatio, numImages },
       });
 
       res.status(202).json({ success: true, message: 'Đang xử lý...', data: { jobId: job.jobId, status: 'processing' } });
 
-      setImmediate(() => runInBackground({
+      scheduleJob({
         userId, jobId: job.jobId, cost,
         description: 'Product to model',
         filePrefix: 'product_to_model',
-        fashnCall: () => fashnService.productToModel({ productImage: productImage!, prompt, aspectRatio, resolution, generationMode, faceReference }),
-      }));
+        modelName: 'product-to-model',
+        inputs: {
+          product_image: productImage,
+          ...(imagePrompt         && { image_prompt:         imagePrompt }),
+          ...(faceReference       && { face_reference:       faceReference }),
+          ...(faceReferenceMode   && { face_reference_mode:  faceReferenceMode }),
+          ...(backgroundReference && { background_reference: backgroundReference }),
+          ...(prompt              && { prompt }),
+          ...(aspectRatio         && { aspect_ratio:         aspectRatio }),
+          resolution, generation_mode: generationMode,
+          ...(seed !== undefined  && { seed }),
+          num_images: numImages,
+        },
+        pollingFallback: () => fashnService.productToModel({
+          productImage, imagePrompt, faceReference, faceReferenceMode,
+          backgroundReference, prompt, aspectRatio, resolution,
+          generationMode, seed, numImages,
+        }),
+      });
     } catch (err: any) {
       console.error('[AIController.productToModel]', err);
       sendError(res, 500, err.message);
@@ -592,23 +626,54 @@ export class AIController {
       if (!userId) { sendError(res, 401, 'Không tìm thấy thông tin xác thực người dùng.'); return; }
 
       const files = (req as any).files as Record<string, Express.Multer.File[]> | undefined;
-      const modelImageFile = files?.['modelImage']?.[0];
-      const modelImage = modelImageFile
-        ? `data:${modelImageFile.mimetype};base64,${modelImageFile.buffer.toString('base64')}`
+      const toBase64 = (f: Express.Multer.File) => `data:${f.mimetype};base64,${f.buffer.toString('base64')}`;
+
+      const modelImage = files?.['modelImage']?.[0]
+        ? toBase64(files['modelImage'][0])
         : (req.body.modelImageUrl as string | undefined);
       if (!modelImage) { sendError(res, 400, 'Cần cung cấp modelImage hoặc modelImageUrl.'); return; }
+
+      const faceReference = files?.['faceReference']?.[0]
+        ? toBase64(files['faceReference'][0])
+        : (req.body.faceReferenceUrl as string | undefined);
 
       const prompt: string | undefined = req.body.prompt?.trim() || undefined;
       const resolution: FashnResolution = req.body.resolution || FashnResolution.ONE_K;
       const generationMode: FashnGenerationMode = req.body.generationMode || FashnGenerationMode.BALANCED;
+      const faceReferenceMode: 'match_base' | 'match_reference' | undefined =
+        ['match_base', 'match_reference'].includes(req.body.faceReferenceMode)
+          ? req.body.faceReferenceMode : undefined;
+      const seed: number | undefined = req.body.seed ? parseInt(req.body.seed) : undefined;
+      const numImages: number = Math.min(4, Math.max(1, parseInt(req.body.numImages) || 1));
 
       const creditCheck = await CreditService.checkCredit(userId, cost);
       if (!creditCheck.ok) { sendError(res, 402, `Credit không đủ. Cần ${cost}, hiện có ${creditCheck.userCredit}.`); return; }
 
-      const job = await CreditService.createAIJob({ userId, type: AIJobType.MODEL_SWAP, prompt: prompt || 'Model swap', creditCost: cost, provider: AIProvider.FASHN, inputParams: { resolution, generationMode } });
+      const job = await CreditService.createAIJob({
+        userId, type: AIJobType.MODEL_SWAP,
+        prompt: prompt || 'Model swap',
+        creditCost: cost, provider: AIProvider.FASHN,
+        inputParams: { resolution, generationMode, numImages },
+      });
       res.status(202).json({ success: true, message: 'Đang xử lý...', data: { jobId: job.jobId, status: 'processing' } });
 
-      scheduleJob({ userId, jobId: job.jobId, cost, description: 'Model swap', filePrefix: 'model_swap', modelName: 'model-swap', inputs: { model_image: modelImage, prompt, resolution, generation_mode: generationMode }, pollingFallback: () => fashnService.modelSwap({ modelImage: modelImage!, prompt, resolution, generationMode }) });
+      scheduleJob({
+        userId, jobId: job.jobId, cost,
+        description: 'Model swap', filePrefix: 'model_swap', modelName: 'model-swap',
+        inputs: {
+          model_image: modelImage,
+          ...(prompt            && { prompt }),
+          ...(faceReference     && { face_reference:      faceReference }),
+          ...(faceReferenceMode && { face_reference_mode: faceReferenceMode }),
+          resolution, generation_mode: generationMode,
+          ...(seed !== undefined && { seed }),
+          num_images: numImages,
+        },
+        pollingFallback: () => fashnService.modelSwap({
+          modelImage, prompt, faceReference, faceReferenceMode,
+          resolution, generationMode, seed, numImages,
+        }),
+      });
     } catch (err: any) { console.error('[AIController.modelSwap]', err); sendError(res, 500, err.message); }
   }
 

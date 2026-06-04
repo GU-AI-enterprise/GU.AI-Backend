@@ -39,22 +39,62 @@ export class CollectionService {
   }
 
   // 2. Lấy danh sách bộ sưu tập của user kèm ảnh bìa
+  //    Nếu cover_asset bị archive/null → tự tìm ảnh active đầu tiên trong collection làm fallback
   public static async getUserCollections(userId: string) {
     const client = this.getClient();
-    const { data, error } = await client
+
+    // Query 1: lấy collections + cover_asset (kèm status để check)
+    const { data: collections, error } = await client
       .from('collections')
-      .select(`
-        *,
-        cover_asset:assets!cover_asset_id(id, url, thumbnail_url, status)
-      `)
+      .select(`*, cover_asset:assets!cover_asset_id(id, url, thumbnail_url, status)`)
       .eq('user_id', userId)
       .order('created_at', { ascending: false });
 
-    if (error) {
-      throw new Error(`Lỗi khi lấy danh sách bộ sưu tập: ${error.message}`);
+    if (error) throw new Error(`Lỗi khi lấy danh sách bộ sưu tập: ${error.message}`);
+    if (!collections?.length) return [];
+
+    // Xác định collections cần fallback thumbnail
+    const needsFallbackIds = collections
+      .filter(col => !(col as any).cover_asset || (col as any).cover_asset?.status !== 'active')
+      .map(col => col.id);
+
+    if (!needsFallbackIds.length) return collections;
+
+    // Query 2: lấy tất cả collection_assets cho các collections cần fallback
+    const { data: caRows } = await client
+      .from('collection_assets')
+      .select('collection_id, asset_id, added_at')
+      .in('collection_id', needsFallbackIds)
+      .order('added_at', { ascending: false });
+
+    if (!caRows?.length) return collections;
+
+    // Query 3: lấy active assets từ danh sách asset_id trên
+    const assetIds = [...new Set(caRows.map(r => r.asset_id))];
+    const { data: activeAssets } = await client
+      .from('assets')
+      .select('id, url, thumbnail_url')
+      .in('id', assetIds)
+      .eq('status', 'active');
+
+    // Build fallback map: collectionId → ảnh active đầu tiên (theo thứ tự added_at desc)
+    const activeSet = new Set((activeAssets ?? []).map(a => a.id));
+    const fallbackMap = new Map<string, { id: string; url: string; thumbnail_url: string }>();
+
+    for (const row of caRows) {
+      if (!fallbackMap.has(row.collection_id) && activeSet.has(row.asset_id)) {
+        const asset = (activeAssets ?? []).find(a => a.id === row.asset_id);
+        if (asset) fallbackMap.set(row.collection_id, asset);
+      }
     }
 
-    return data;
+    // Merge: nếu cover không hợp lệ → dùng fallback
+    return collections.map(col => {
+      const cover = (col as any).cover_asset;
+      if (cover && cover.status === 'active') return col;
+      const fallback = fallbackMap.get(col.id) ?? null;
+      return { ...col, cover_asset: fallback };
+    });
   }
 
   // 3. Thêm asset vào bộ sưu tập

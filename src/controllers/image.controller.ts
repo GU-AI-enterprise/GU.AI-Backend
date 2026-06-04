@@ -8,7 +8,8 @@ export class ImageController {
     try {
       const userId = req.user?.id;
       if (!userId) { sendError(res, 401, 'Không tìm thấy thông tin xác thực người dùng.'); return; }
-      sendSuccess(res, { message: 'Lấy danh sách ảnh thành công.', data: await ImageService.getUserImages(userId) });
+      const category = req.query.category as string | undefined;
+      sendSuccess(res, { message: 'Lấy danh sách ảnh thành công.', data: await ImageService.getUserImages(userId, category) });
     } catch (err: any) { sendError(res, 500, err.message); }
   }
 
