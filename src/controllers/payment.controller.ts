@@ -2,6 +2,7 @@ import { Response } from 'express';
 import { AuthRequest } from '../middlewares/auth.middleware';
 import { PayOSService } from '../services/payos.service';
 import { supabaseAdmin } from '../config/supabase';
+import { AdminEventService } from '../services/adminEvent.service';
 import { UserRole } from '../types/role';
 
 export class PaymentController {
@@ -239,6 +240,13 @@ export class PaymentController {
         amount: totalCredits,
         balance_after: balanceAfter,
         description: `Mua gói ${packageName}`,
+      });
+
+      AdminEventService.emit({
+        type: 'user_action',
+        message: `Thanh toán thành công: ${packageName} (+${totalCredits} credits)`,
+        userId,
+        metadata: { transactionId: tx.id, amount: tx.amount, credits: totalCredits },
       });
 
       console.log(`[PaymentController] processPayment: user=${userId} +${totalCredits} credits (order=${orderCode})`);
