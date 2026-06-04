@@ -5,6 +5,7 @@ import { AdminEventService } from '../services/adminEvent.service';
 import { ImageService } from '../services/image.service';
 import { runCleanupNow } from '../jobs/cleanup.job';
 import { sendSuccess, sendError } from '../utils/response';
+import { supabaseAdmin } from '../config/supabase';
 
 const router = Router();
 const ctrl = new AdminController();
@@ -501,6 +502,82 @@ router.delete('/users/:id', requireAdmin, ctrl.deleteUser.bind(ctrl));
  *               $ref: '#/components/schemas/ErrorResponse'
  */
 router.post('/users/:id/credits', requireStaff, ctrl.awardCredits.bind(ctrl));
+
+// ── Transactions (Admin/Staff) ────────────────────────────────────────────────
+
+router.get('/transactions', requireStaff, async (req, res) => {
+  try {
+    if (!supabaseAdmin) { sendError(res, 500, 'Service role not configured'); return; }
+    const limit  = Math.min(100, parseInt((req.query.limit  as string) || '20'));
+    const offset = Math.max(0,   parseInt((req.query.offset as string) || '0'));
+    const status = (req.query.status as string) || 'all';
+    const dateFrom = req.query.dateFrom as string | undefined;
+    const dateTo   = req.query.dateTo   as string | undefined;
+
+    let q = supabaseAdmin
+      .from('transactions')
+      .select(`
+        id, amount, status, provider, provider_transaction_id, payment_url, paid_at, created_at, updated_at,
+        user:users(id, email, name, avatar_url, current_credit),
+        package:credit_packages(name, credit_amount, bonus_credit)
+      `, { count: 'exact' })
+      .order('created_at', { ascending: false });
+
+    if (status !== 'all') q = q.eq('status', status);
+    if (dateFrom) q = q.gte('created_at', dateFrom);
+    if (dateTo) {
+      const end = new Date(dateTo); end.setDate(end.getDate() + 1);
+      q = q.lt('created_at', end.toISOString());
+    }
+
+    const { data, error, count } = await q.range(offset, offset + limit - 1);
+    if (error) throw error;
+
+    // Revenue stats
+    const { data: allForStats } = await supabaseAdmin
+      .from('transactions')
+      .select('status, amount');
+
+    const statsRows = (allForStats ?? []) as { status: string; amount: number }[];
+    const totalRevenue  = statsRows.filter(r => r.status === 'success').reduce((s: number, r) => s + Number(r.amount), 0);
+    const successCount  = statsRows.filter(r => r.status === 'success').length;
+    const pendingCount  = statsRows.filter(r => r.status === 'pending').length;
+    const failedCount   = statsRows.filter(r => r.status === 'failed' || r.status === 'cancelled').length;
+
+    sendSuccess(res, {
+      data: {
+        transactions: data ?? [],
+        total: count ?? 0,
+        stats: { totalRevenue, successCount, pendingCount, failedCount },
+        hasMore: offset + limit < (count ?? 0),
+      },
+    });
+  } catch (err: any) {
+    sendError(res, 500, err.message);
+  }
+});
+
+router.get('/transactions/:id', requireStaff, async (req, res) => {
+  try {
+    if (!supabaseAdmin) { sendError(res, 500, 'Service role not configured'); return; }
+    const { id } = req.params;
+
+    const { data, error } = await supabaseAdmin
+      .from('transactions')
+      .select(`
+        id, amount, status, provider, provider_transaction_id, payment_url, paid_at, created_at, updated_at,
+        user:users(id, email, name, avatar_url, current_credit, plan_type, role, created_at),
+        package:credit_packages(name, credit_amount, bonus_credit, price)
+      `)
+      .eq('id', id)
+      .single();
+
+    if (error || !data) { sendError(res, 404, 'Transaction not found'); return; }
+    sendSuccess(res, { data });
+  } catch (err: any) {
+    sendError(res, 500, err.message);
+  }
+});
 
 // ── Trash management (Admin/Staff) ────────────────────────────────────────────
 router.get('/archive/stats', requireStaff, async (_req, res) => {

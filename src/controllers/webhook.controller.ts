@@ -3,6 +3,8 @@ import { CreditService } from '../services/credit.service';
 import { StorageService } from '../services/storage.service';
 import { SocketService } from '../services/socket.service';
 import { AdminEventService } from '../services/adminEvent.service';
+import { PayOSService } from '../services/payos.service';
+import { supabaseAdmin } from '../config/supabase';
 import { AIJobStatus } from '../constants/ai';
 import { AssetCategory, AssetRole } from '../constants/asset';
 
@@ -101,6 +103,103 @@ export class WebhookController {
       console.error('[WebhookController] Error processing Fashn webhook:', err.message);
       await CreditService.updateAIJob(jobId, AIJobStatus.FAILED, err.message).catch(() => {});
       SocketService.emitAIJobUpdate(userId, { jobId, status: 'failed', error: err.message });
+    }
+  }
+
+
+
+  public async payos(req: Request, res: Response): Promise<void> {
+    // Acknowledge immediately so PayOS doesn't retry on slow processing
+    res.status(200).json({ success: true });
+
+    const body = req.body as { data?: Record<string, unknown>; signature?: string; success?: boolean };
+
+    if (!PayOSService.verifyWebhookSignature(body)) {
+      console.warn('[WebhookController] PayOS webhook: invalid signature');
+      return;
+    }
+
+    const { data } = body;
+    if (!data || !body.success) return;
+
+    const orderCode = String(data.orderCode);
+
+    try {
+      const { data: tx, error: txErr } = await supabaseAdmin!
+        .from('transactions')
+        .select('id, status, user_id, package_id, amount')
+        .eq('provider_transaction_id', orderCode)
+        .single();
+
+      if (txErr || !tx) {
+        console.warn(`[WebhookController] PayOS: no transaction for orderCode=${orderCode}`);
+        return;
+      }
+
+      // Atomic status claim — only one of webhook/processPayment wins this UPDATE.
+      // If 0 rows returned, another process already claimed it → stop here.
+      const { data: claimed } = await supabaseAdmin!
+        .from('transactions')
+        .update({ status: 'success', paid_at: new Date().toISOString(), updated_at: new Date().toISOString() })
+        .eq('id', tx.id)
+        .eq('status', 'pending')   // guard: only update if still pending
+        .select('id');
+
+      if (!claimed || claimed.length === 0) {
+        console.log(`[WebhookController] PayOS: order=${orderCode} already processed — skipping`);
+        return;
+      }
+
+      // Get package credit info
+      const { data: pkg } = await supabaseAdmin!
+        .from('credit_packages')
+        .select('name, credit_amount, bonus_credit')
+        .eq('id', tx.package_id)
+        .single();
+
+      const totalCredits = (pkg?.credit_amount ?? 0) + (pkg?.bonus_credit ?? 0);
+      const packageName = pkg?.name ?? 'Credit Package';
+
+      // Read current balance to compute balance_after
+      const { data: user } = await supabaseAdmin!
+        .from('users')
+        .select('current_credit')
+        .eq('id', tx.user_id)
+        .single();
+
+      const balanceAfter = (user?.current_credit ?? 0) + totalCredits;
+
+      // Insert into credit_ledger with type 'purchase' — trigger updates users.current_credit
+      await supabaseAdmin!
+        .from('credit_ledger')
+        .insert({
+          user_id: tx.user_id,
+          transaction_id: tx.id,
+          type: 'purchase',
+          amount: totalCredits,
+          balance_after: balanceAfter,
+          description: `Mua gói ${packageName}`,
+        });
+
+      // Notify user via socket
+      SocketService.sendNotification({
+        userId: tx.user_id,
+        type: 'success',
+        title: 'Thanh toán thành công',
+        message: `Bạn đã nhận được ${totalCredits} credits từ gói ${packageName}`,
+        data: { transactionId: tx.id, credits: totalCredits, newBalance: balanceAfter },
+      });
+
+      AdminEventService.emit({
+        type: 'user_action',
+        message: `Thanh toán thành công: ${packageName} (+${totalCredits} credits)`,
+        userId: tx.user_id,
+        metadata: { transactionId: tx.id, amount: tx.amount, credits: totalCredits },
+      });
+
+      console.log(`[WebhookController] PayOS: user=${tx.user_id} +${totalCredits} credits (order=${orderCode})`);
+    } catch (err: any) {
+      console.error('[WebhookController] PayOS processing error:', err.message);
     }
   }
 }
