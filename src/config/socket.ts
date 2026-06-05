@@ -14,12 +14,26 @@ export const initializeSocket = (httpServer: HTTPServer): SocketIOServer => {
     process.env.CLIENT_URL || 'http://localhost:3000'
   )
     .split(',')
-    .map((s) => s.trim())
+    .map((s) => s.trim().replace(/\/$/, ''))
     .filter(Boolean);
+
+  // In development allow any origin (mirrors Express CORS behaviour).
+  // In production restrict to the explicit CLIENT_URL whitelist.
+  const corsOrigin =
+    process.env.NODE_ENV !== 'production'
+      ? true
+      : (origin: string | undefined, cb: (err: Error | null, allow?: boolean) => void) => {
+          const clean = origin ? origin.trim().replace(/\/$/, '') : '';
+          const allowed =
+            !origin ||
+            allowedOrigins.includes(clean) ||
+            allowedOrigins.some((a) => clean.startsWith(a));
+          allowed ? cb(null, true) : cb(new Error(`Socket CORS blocked: ${origin}`));
+        };
 
   io = new SocketIOServer(httpServer, {
     cors: {
-      origin: allowedOrigins,
+      origin: corsOrigin,
       credentials: true,
       methods: ['GET', 'POST'],
     },

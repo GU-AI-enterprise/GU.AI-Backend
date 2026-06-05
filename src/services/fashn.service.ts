@@ -3,7 +3,6 @@ export { TryOnCategory, TryOnMode };
 
 const FASHN_BASE_URL = 'https://api.fashn.ai/v1';
 const POLL_INTERVAL_MS = 3_000;
-const POLL_TIMEOUT_MS = 120_000;
 
 // ─── Result types ──────────────────────────────────────────────────────────────
 
@@ -175,9 +174,7 @@ class FashnService {
   // ── Core: poll until completed or timeout ────────────────────────────────────
 
   private async pollUntilDone(predictionId: string): Promise<string> {
-    const deadline = Date.now() + POLL_TIMEOUT_MS;
-
-    while (Date.now() < deadline) {
+    while (true) {
       await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
 
       const res = await fetch(`${FASHN_BASE_URL}/status/${predictionId}`, {
@@ -209,8 +206,6 @@ class FashnService {
         throw new Error(`Fashn ${name}: ${msg}`);
       }
     }
-
-    throw new Error('Fashn prediction vượt quá 120 giây.');
   }
 
   // ── Virtual Try-On v1.6 ──────────────────────────────────────────────────────
