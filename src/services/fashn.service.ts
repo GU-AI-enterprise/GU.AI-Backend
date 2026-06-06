@@ -66,10 +66,16 @@ export interface ReframeOptions {
 export interface EditImageOptions {
   image: string;
   prompt: string;
-  /** PNG mask cùng kích thước: trắng = vùng chỉnh, đen = giữ nguyên */
+  /** PNG mask cùng kích thước: trắng = vùng ưu tiên, đen = giữ nguyên */
   mask?: string;
+  /** Ảnh ngữ cảnh tham chiếu — dùng khi không thể mô tả bằng văn bản (pose, nền, texture) */
+  imageContext?: string;
   resolution?: FashnResolution;
   generationMode?: FashnGenerationMode;
+  seed?: number;
+  /** Số ảnh cần tạo trong một request (1–4) */
+  numImages?: number;
+  outputFormat?: 'png' | 'jpeg';
 }
 
 export interface FaceToModelOptions {
@@ -290,9 +296,13 @@ class FashnService {
       image: options.image,
       prompt: options.prompt,
     };
-    if (options.mask) inputs.mask = options.mask;
-    if (options.resolution) inputs.resolution = options.resolution;
-    if (options.generationMode) inputs.generation_mode = options.generationMode;
+    if (options.mask)                inputs.mask             = options.mask;
+    if (options.imageContext)        inputs.image_context    = options.imageContext;
+    if (options.resolution)          inputs.resolution       = options.resolution;
+    if (options.generationMode)      inputs.generation_mode  = options.generationMode;
+    if (options.seed !== undefined)  inputs.seed             = options.seed;
+    if (options.numImages && options.numImages > 1) inputs.num_images = options.numImages;
+    if (options.outputFormat)        inputs.output_format    = options.outputFormat;
 
     const predictionId = await this.run('edit', inputs);
     const outputUrl = await this.pollUntilDone(predictionId);

@@ -51,6 +51,24 @@ export enum FashnGenerationMode {
   QUALITY = 'quality',
 }
 
+/**
+ * Dynamic credit cost for Edit — mirrors Fashn pricing (×2 markup), scaled by num_images.
+ * fast 1k=2 | balanced 1k=4 | quality 1k=6; each tier up adds 2 per step.
+ */
+export function computeEditCreditCost(
+  generationMode: FashnGenerationMode = FashnGenerationMode.BALANCED,
+  resolution: FashnResolution = FashnResolution.ONE_K,
+  numImages = 1,
+): number {
+  const table: Record<FashnGenerationMode, Record<FashnResolution, number>> = {
+    [FashnGenerationMode.FAST]:     { [FashnResolution.ONE_K]: 2, [FashnResolution.TWO_K]: 4, [FashnResolution.FOUR_K]: 6 },
+    [FashnGenerationMode.BALANCED]: { [FashnResolution.ONE_K]: 4, [FashnResolution.TWO_K]: 6, [FashnResolution.FOUR_K]: 8 },
+    [FashnGenerationMode.QUALITY]:  { [FashnResolution.ONE_K]: 6, [FashnResolution.TWO_K]: 8, [FashnResolution.FOUR_K]: 10 },
+  };
+  const base = table[generationMode]?.[resolution] ?? 4;
+  return base * Math.max(1, Math.min(4, numImages));
+}
+
 export const CREDIT_COST: Record<AIJobType, number> = {
   [AIJobType.TRY_ON]: 10,
   [AIJobType.TRY_ON_MAX]: 20,

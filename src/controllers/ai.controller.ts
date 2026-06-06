@@ -14,6 +14,7 @@ import {
   FashnResolution,
   FashnGenerationMode,
   CREDIT_COST,
+  computeEditCreditCost,
 } from '../constants/ai';
 import { AssetCategory, AssetRole, AssetType } from '../constants/asset';
 import { StorageBucket } from '../services/storage.service';
@@ -512,8 +513,6 @@ export class AIController {
   // ── POST /api/ai/edit ────────────────────────────────────────────────────────
 
   public async editImage(req: AuthRequest, res: Response): Promise<void> {
-    const cost = CREDIT_COST[AIJobType.EDIT];
-
     try {
       const userId = req.user?.id;
       if (!userId) { sendError(res, 401, 'Không tìm thấy thông tin xác thực người dùng.'); return; }
@@ -527,20 +526,30 @@ export class AIController {
       if (!VALID_RESOLUTIONS.includes(resolution)) {
         sendError(res, 400, `resolution phải là một trong: ${VALID_RESOLUTIONS.join(', ')}.`); return;
       }
+      if (!VALID_GEN_MODES.includes(generationMode)) {
+        sendError(res, 400, `generationMode phải là một trong: ${VALID_GEN_MODES.join(', ')}.`); return;
+      }
+
+      const numImages = Math.min(4, Math.max(1, parseInt(req.body.numImages) || 1));
+      const seed: number | undefined = req.body.seed !== undefined ? parseInt(req.body.seed) : undefined;
+
+      const cost = computeEditCreditCost(generationMode, resolution, numImages);
 
       const files = (req as any).files as Record<string, Express.Multer.File[]> | undefined;
-      const imageFile = files?.['image']?.[0];
-      const maskFile = files?.['mask']?.[0];
+      const toBase64 = (f: Express.Multer.File) => `data:${f.mimetype};base64,${f.buffer.toString('base64')}`;
 
-      const image = imageFile
-        ? `data:${imageFile.mimetype};base64,${imageFile.buffer.toString('base64')}`
+      const image = files?.['image']?.[0]
+        ? toBase64(files['image'][0])
         : (req.body.imageUrl as string | undefined);
-
       if (!image) { sendError(res, 400, 'Cần cung cấp image (file) hoặc imageUrl.'); return; }
 
-      const mask = maskFile
-        ? `data:${maskFile.mimetype};base64,${maskFile.buffer.toString('base64')}`
+      const mask = files?.['mask']?.[0]
+        ? toBase64(files['mask'][0])
         : (req.body.maskUrl as string | undefined);
+
+      const imageContext = files?.['imageContext']?.[0]
+        ? toBase64(files['imageContext'][0])
+        : (req.body.imageContextUrl as string | undefined);
 
       const creditCheck = await CreditService.checkCredit(userId, cost);
       if (!creditCheck.ok) {
@@ -550,17 +559,26 @@ export class AIController {
       const job = await CreditService.createAIJob({
         userId, type: AIJobType.EDIT, prompt,
         creditCost: cost, provider: AIProvider.FASHN,
-        inputParams: { resolution, generationMode },
+        inputParams: { resolution, generationMode, numImages, hasMask: !!mask, hasContext: !!imageContext },
       });
 
-      res.status(202).json({ success: true, message: 'Đang xử lý...', data: { jobId: job.jobId, status: 'processing' } });
+      res.status(202).json({ success: true, message: 'Đang xử lý...', data: { jobId: job.jobId, status: 'processing', cost } });
 
-      setImmediate(() => runInBackground({
+      scheduleJob({
         userId, jobId: job.jobId, cost,
         description: `Edit image: ${prompt.slice(0, 60)}`,
         filePrefix: 'edit',
-        fashnCall: () => fashnService.editImage({ image: image!, prompt, mask, resolution, generationMode }),
-      }));
+        modelName: 'edit',
+        inputs: {
+          image, prompt,
+          ...(mask         && { mask }),
+          ...(imageContext && { image_context: imageContext }),
+          resolution, generation_mode: generationMode,
+          ...(seed !== undefined && { seed }),
+          ...(numImages > 1      && { num_images: numImages }),
+        },
+        pollingFallback: () => fashnService.editImage({ image: image!, prompt, mask, imageContext, resolution, generationMode, seed, numImages }),
+      });
     } catch (err: any) {
       console.error('[AIController.editImage]', err);
       sendError(res, 500, err.message);
