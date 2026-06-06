@@ -9,6 +9,8 @@ const POLL_INTERVAL_MS = 3_000;
 export interface FashnResult {
   outputUrl: string;
   predictionId: string;
+  /** Raw Fashn credits consumed (from x-fashn-credits-used header). GU.AI cost = this × 2. */
+  fashnCreditsUsed: number;
 }
 
 // kept for backward compat
@@ -61,6 +63,9 @@ export interface ReframeOptions {
   image: string;
   aspectRatio: string;
   resolution?: FashnResolution;
+  generationMode?: FashnGenerationMode;
+  numImages?: number;
+  seed?: number;
 }
 
 export interface EditImageOptions {
@@ -95,6 +100,8 @@ export interface ModelCreateOptions {
   aspectRatio?: string;
   resolution?: FashnResolution;
   generationMode?: FashnGenerationMode;
+  numImages?: number;
+  seed?: number;
 }
 
 export interface ModelSwapOptions {
@@ -148,9 +155,10 @@ class FashnService {
 
   // ── Core: submit job → get predictionId ──────────────────────────────────────
 
-  /** Public: submit a job to Fashn and return the predictionId, without polling. */
-  public async submitJob(modelName: string, inputs: Record<string, any>): Promise<string> {
-    return this.run(modelName, inputs);
+  /** Public: submit a job to Fashn and return predictionId + actual Fashn credits consumed. */
+  public async submitJob(modelName: string, inputs: Record<string, any>): Promise<{ predictionId: string; fashnCreditsUsed: number }> {
+    const { id, fashnCreditsUsed } = await this.run(modelName, inputs);
+    return { predictionId: id, fashnCreditsUsed };
   }
 
   /** Public: poll a predictionId until it completes or times out. */
@@ -158,7 +166,7 @@ class FashnService {
     return this.pollUntilDone(predictionId);
   }
 
-  private async run(modelName: string, inputs: Record<string, any>): Promise<string> {
+  private async run(modelName: string, inputs: Record<string, any>): Promise<{ id: string; fashnCreditsUsed: number }> {
     if (!this.apiKey) throw new Error('FASHN_API_KEY chưa được cấu hình.');
 
     const res = await fetch(`${FASHN_BASE_URL}/run`, {
@@ -174,7 +182,8 @@ class FashnService {
 
     const data = (await res.json()) as { id: string; error?: string | null };
     if (data.error) throw new Error(`Fashn run error: ${data.error}`);
-    return data.id;
+    const fashnCreditsUsed = parseInt(res.headers.get('x-fashn-credits-used') ?? '0', 10) || 0;
+    return { id: data.id, fashnCreditsUsed };
   }
 
   // ── Core: poll until completed or timeout ────────────────────────────────────
@@ -218,16 +227,11 @@ class FashnService {
 
   public async tryOn(options: TryOnOptions): Promise<FashnResult> {
     const { modelImage, garmentImage, category, mode = TryOnMode.BALANCED } = options;
-
-    const predictionId = await this.run('tryon-v1.6', {
-      model_image: modelImage,
-      garment_image: garmentImage,
-      category,
-      mode,
+    const { id, fashnCreditsUsed } = await this.run('tryon-v1.6', {
+      model_image: modelImage, garment_image: garmentImage, category, mode,
     });
-
-    const outputUrl = await this.pollUntilDone(predictionId);
-    return { outputUrl, predictionId };
+    const outputUrl = await this.pollUntilDone(id);
+    return { outputUrl, predictionId: id, fashnCreditsUsed };
   }
 
   // ── Virtual Try-On Max ───────────────────────────────────────────────────────
@@ -237,135 +241,134 @@ class FashnService {
       product_image: options.productImage,
       model_image: options.modelImage,
     };
-    if (options.resolution) inputs.resolution = options.resolution;
-    if (options.generationMode) inputs.generation_mode = options.generationMode;
-    if (options.numImages) inputs.num_images = options.numImages;
+    if (options.resolution)    inputs.resolution      = options.resolution;
+    if (options.generationMode)inputs.generation_mode = options.generationMode;
+    if (options.numImages)     inputs.num_images      = options.numImages;
 
-    const predictionId = await this.run('tryon-max', inputs);
-    const outputUrl = await this.pollUntilDone(predictionId);
-    return { outputUrl, predictionId };
+    const { id, fashnCreditsUsed } = await this.run('tryon-max', inputs);
+    const outputUrl = await this.pollUntilDone(id);
+    return { outputUrl, predictionId: id, fashnCreditsUsed };
   }
 
   // ── Background Remove ────────────────────────────────────────────────────────
 
   public async removeBackground(imageUrl: string): Promise<FashnResult> {
-    const predictionId = await this.run('background-remove', { image: imageUrl });
-    const outputUrl = await this.pollUntilDone(predictionId);
-    return { outputUrl, predictionId };
+    const { id, fashnCreditsUsed } = await this.run('background-remove', { image: imageUrl });
+    const outputUrl = await this.pollUntilDone(id);
+    return { outputUrl, predictionId: id, fashnCreditsUsed };
   }
 
   // ── Product to Model ─────────────────────────────────────────────────────────
 
   public async productToModel(options: ProductToModelOptions): Promise<FashnResult> {
     const inputs: Record<string, any> = { product_image: options.productImage };
-    if (options.prompt)             inputs.prompt               = options.prompt;
-    if (options.imagePrompt)        inputs.image_prompt         = options.imagePrompt;
-    if (options.faceReference)      inputs.face_reference       = options.faceReference;
-    if (options.faceReferenceMode)  inputs.face_reference_mode  = options.faceReferenceMode;
-    if (options.backgroundReference)inputs.background_reference = options.backgroundReference;
-    if (options.aspectRatio)        inputs.aspect_ratio         = options.aspectRatio;
-    if (options.resolution)         inputs.resolution           = options.resolution;
-    if (options.generationMode)     inputs.generation_mode      = options.generationMode;
+    if (options.prompt)              inputs.prompt               = options.prompt;
+    if (options.imagePrompt)         inputs.image_prompt         = options.imagePrompt;
+    if (options.faceReference)       inputs.face_reference       = options.faceReference;
+    if (options.faceReferenceMode)   inputs.face_reference_mode  = options.faceReferenceMode;
+    if (options.backgroundReference) inputs.background_reference = options.backgroundReference;
+    if (options.aspectRatio)         inputs.aspect_ratio         = options.aspectRatio;
+    if (options.resolution)          inputs.resolution           = options.resolution;
+    if (options.generationMode)      inputs.generation_mode      = options.generationMode;
     if (options.seed !== undefined)  inputs.seed                 = options.seed;
-    if (options.numImages)          inputs.num_images           = options.numImages;
-    if (options.outputFormat)       inputs.output_format        = options.outputFormat;
+    if (options.numImages)           inputs.num_images           = options.numImages;
+    if (options.outputFormat)        inputs.output_format        = options.outputFormat;
 
-    const predictionId = await this.run('product-to-model', inputs);
-    const outputUrl = await this.pollUntilDone(predictionId);
-    return { outputUrl, predictionId };
+    const { id, fashnCreditsUsed } = await this.run('product-to-model', inputs);
+    const outputUrl = await this.pollUntilDone(id);
+    return { outputUrl, predictionId: id, fashnCreditsUsed };
   }
 
   // ── Reframe ──────────────────────────────────────────────────────────────────
 
   public async reframe(options: ReframeOptions): Promise<FashnResult> {
-    const inputs: Record<string, any> = {
-      image: options.image,
-      aspect_ratio: options.aspectRatio,
-    };
-    if (options.resolution) inputs.resolution = options.resolution;
+    const inputs: Record<string, any> = { image: options.image, aspect_ratio: options.aspectRatio };
+    if (options.resolution)         inputs.resolution      = options.resolution;
+    if (options.generationMode)     inputs.generation_mode = options.generationMode;
+    if (options.numImages && options.numImages > 1) inputs.num_images = options.numImages;
+    if (options.seed !== undefined) inputs.seed            = options.seed;
 
-    const predictionId = await this.run('reframe', inputs);
-    const outputUrl = await this.pollUntilDone(predictionId);
-    return { outputUrl, predictionId };
+    const { id, fashnCreditsUsed } = await this.run('reframe', inputs);
+    const outputUrl = await this.pollUntilDone(id);
+    return { outputUrl, predictionId: id, fashnCreditsUsed };
   }
 
   // ── Edit Image ───────────────────────────────────────────────────────────────
 
   public async editImage(options: EditImageOptions): Promise<FashnResult> {
-    const inputs: Record<string, any> = {
-      image: options.image,
-      prompt: options.prompt,
-    };
-    if (options.mask)                inputs.mask             = options.mask;
-    if (options.imageContext)        inputs.image_context    = options.imageContext;
-    if (options.resolution)          inputs.resolution       = options.resolution;
-    if (options.generationMode)      inputs.generation_mode  = options.generationMode;
-    if (options.seed !== undefined)  inputs.seed             = options.seed;
+    const inputs: Record<string, any> = { image: options.image, prompt: options.prompt };
+    if (options.mask)                inputs.mask            = options.mask;
+    if (options.imageContext)        inputs.image_context   = options.imageContext;
+    if (options.resolution)          inputs.resolution      = options.resolution;
+    if (options.generationMode)      inputs.generation_mode = options.generationMode;
+    if (options.seed !== undefined)  inputs.seed            = options.seed;
     if (options.numImages && options.numImages > 1) inputs.num_images = options.numImages;
-    if (options.outputFormat)        inputs.output_format    = options.outputFormat;
+    if (options.outputFormat)        inputs.output_format   = options.outputFormat;
 
-    const predictionId = await this.run('edit', inputs);
-    const outputUrl = await this.pollUntilDone(predictionId);
-    return { outputUrl, predictionId };
+    const { id, fashnCreditsUsed } = await this.run('edit', inputs);
+    const outputUrl = await this.pollUntilDone(id);
+    return { outputUrl, predictionId: id, fashnCreditsUsed };
   }
 
   // ── Face to Model ────────────────────────────────────────────────────────────
 
   public async faceToModel(options: FaceToModelOptions): Promise<FashnResult> {
     const inputs: Record<string, any> = { face_image: options.faceImage };
-    if (options.prompt) inputs.prompt = options.prompt;
-    if (options.aspectRatio) inputs.aspect_ratio = options.aspectRatio;
-    if (options.resolution) inputs.resolution = options.resolution;
-    if (options.generationMode) inputs.generation_mode = options.generationMode;
+    if (options.prompt)        inputs.prompt          = options.prompt;
+    if (options.aspectRatio)   inputs.aspect_ratio    = options.aspectRatio;
+    if (options.resolution)    inputs.resolution      = options.resolution;
+    if (options.generationMode)inputs.generation_mode = options.generationMode;
 
-    const predictionId = await this.run('face-to-model', inputs);
-    const outputUrl = await this.pollUntilDone(predictionId);
-    return { outputUrl, predictionId };
+    const { id, fashnCreditsUsed } = await this.run('face-to-model', inputs);
+    const outputUrl = await this.pollUntilDone(id);
+    return { outputUrl, predictionId: id, fashnCreditsUsed };
   }
 
   // ── Model Create ─────────────────────────────────────────────────────────────
 
   public async modelCreate(options: ModelCreateOptions): Promise<FashnResult> {
     const inputs: Record<string, any> = { prompt: options.prompt };
-    if (options.imageReference) inputs.image_reference = options.imageReference;
-    if (options.aspectRatio) inputs.aspect_ratio = options.aspectRatio;
-    if (options.resolution) inputs.resolution = options.resolution;
-    if (options.generationMode) inputs.generation_mode = options.generationMode;
+    if (options.imageReference)      inputs.image_reference = options.imageReference;
+    if (options.aspectRatio)         inputs.aspect_ratio    = options.aspectRatio;
+    if (options.resolution)          inputs.resolution      = options.resolution;
+    if (options.generationMode)      inputs.generation_mode = options.generationMode;
+    if (options.numImages && options.numImages > 1) inputs.num_images = options.numImages;
+    if (options.seed !== undefined)  inputs.seed            = options.seed;
 
-    const predictionId = await this.run('model-create', inputs);
-    const outputUrl = await this.pollUntilDone(predictionId);
-    return { outputUrl, predictionId };
+    const { id, fashnCreditsUsed } = await this.run('model-create', inputs);
+    const outputUrl = await this.pollUntilDone(id);
+    return { outputUrl, predictionId: id, fashnCreditsUsed };
   }
 
   // ── Model Swap ───────────────────────────────────────────────────────────────
 
   public async modelSwap(options: ModelSwapOptions): Promise<FashnResult> {
     const inputs: Record<string, any> = { model_image: options.modelImage };
-    if (options.prompt)            inputs.prompt               = options.prompt;
-    if (options.faceReference)     inputs.face_reference       = options.faceReference;
-    if (options.faceReferenceMode) inputs.face_reference_mode  = options.faceReferenceMode;
-    if (options.resolution)        inputs.resolution           = options.resolution;
-    if (options.generationMode)    inputs.generation_mode      = options.generationMode;
-    if (options.seed !== undefined) inputs.seed                = options.seed;
-    if (options.numImages)         inputs.num_images           = options.numImages;
-    if (options.outputFormat)      inputs.output_format        = options.outputFormat;
+    if (options.prompt)             inputs.prompt               = options.prompt;
+    if (options.faceReference)      inputs.face_reference       = options.faceReference;
+    if (options.faceReferenceMode)  inputs.face_reference_mode  = options.faceReferenceMode;
+    if (options.resolution)         inputs.resolution           = options.resolution;
+    if (options.generationMode)     inputs.generation_mode      = options.generationMode;
+    if (options.seed !== undefined) inputs.seed                 = options.seed;
+    if (options.numImages)          inputs.num_images           = options.numImages;
+    if (options.outputFormat)       inputs.output_format        = options.outputFormat;
 
-    const predictionId = await this.run('model-swap', inputs);
-    const outputUrl = await this.pollUntilDone(predictionId);
-    return { outputUrl, predictionId };
+    const { id, fashnCreditsUsed } = await this.run('model-swap', inputs);
+    const outputUrl = await this.pollUntilDone(id);
+    return { outputUrl, predictionId: id, fashnCreditsUsed };
   }
 
   // ── Image to Video ───────────────────────────────────────────────────────────
 
   public async imageToVideo(options: ImageToVideoOptions): Promise<FashnResult> {
     const inputs: Record<string, any> = { image: options.image };
-    if (options.prompt) inputs.prompt = options.prompt;
-    if (options.duration) inputs.duration = options.duration;
-    if (options.resolution) inputs.resolution = options.resolution;
+    if (options.prompt)    inputs.prompt      = options.prompt;
+    if (options.duration)  inputs.duration    = options.duration;
+    if (options.resolution)inputs.resolution  = options.resolution;
 
-    const predictionId = await this.run('image-to-video', inputs);
-    const outputUrl = await this.pollUntilDone(predictionId);
-    return { outputUrl, predictionId };
+    const { id, fashnCreditsUsed } = await this.run('image-to-video', inputs);
+    const outputUrl = await this.pollUntilDone(id);
+    return { outputUrl, predictionId: id, fashnCreditsUsed };
   }
 
   // ── Test connection ──────────────────────────────────────────────────────────

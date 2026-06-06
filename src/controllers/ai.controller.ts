@@ -54,12 +54,14 @@ async function runInBackground(params: {
   description: string;
   filePrefix: string;
   isVideo?: boolean;
-  fashnCall: () => Promise<{ outputUrl: string; predictionId: string }>;
+  fashnCall: () => Promise<{ outputUrl: string; predictionId: string; fashnCreditsUsed: number }>;
 }): Promise<void> {
   const { userId, jobId, cost, description, filePrefix, isVideo = false, fashnCall } = params;
 
   try {
     const result = await fashnCall();
+    // Use actual Fashn credits × 2 (GU.AI markup); fall back to estimated cost if header was missing
+    const actualCost = result.fashnCreditsUsed > 0 ? result.fashnCreditsUsed * 2 : cost;
 
     const ext    = isVideo ? 'mp4'       : 'png';
     const mime   = isVideo ? 'video/mp4' : 'image/png';
@@ -80,14 +82,14 @@ async function runInBackground(params: {
 
     await CreditService.linkAssetToJob(jobId, asset.id, AssetRole.OUTPUT);
     await CreditService.updateAIJob(jobId, AIJobStatus.COMPLETED);
-    await CreditService.deductCredit(userId, cost, description, jobId);
+    await CreditService.deductCredit(userId, actualCost, description, jobId);
 
     SocketService.emitAIJobUpdate(userId, {
       jobId,
       status: 'completed',
       imageUrl: publicUrl,
       assetId: asset.id,
-      creditsUsed: cost,
+      creditsUsed: actualCost,
     });
 
     AdminEventService.emit({
@@ -123,7 +125,7 @@ async function scheduleJob(params: {
   isVideo?: boolean;
   modelName: string;
   inputs: Record<string, any>;
-  pollingFallback: () => Promise<{ outputUrl: string; predictionId: string }>;
+  pollingFallback: () => Promise<{ outputUrl: string; predictionId: string; fashnCreditsUsed: number }>;
 }): Promise<void> {
   const { userId, jobId, cost, description, filePrefix, isVideo = false, modelName, inputs, pollingFallback } = params;
   const serverUrl = process.env.SERVER_URL?.replace(/\/$/, '');
@@ -138,11 +140,12 @@ async function scheduleJob(params: {
   if (serverUrl) {
     try {
       const webhookUrl = `${serverUrl}/api/webhooks/fashn`;
-      const predictionId = await fashnService.submitJob(modelName, {
+      const { predictionId, fashnCreditsUsed } = await fashnService.submitJob(modelName, {
         ...inputs,
         webhook_url: webhookUrl,
       });
-      pendingWebhookJobs.set(predictionId, { userId, jobId, cost, description, filePrefix, isVideo });
+      const actualCost = fashnCreditsUsed > 0 ? fashnCreditsUsed * 2 : cost;
+      pendingWebhookJobs.set(predictionId, { userId, jobId, cost: actualCost, description, filePrefix, isVideo });
       console.log(`[AIController] Webhook mode — predictionId=${predictionId} → ${webhookUrl}`);
       return;
     } catch (err: any) {
@@ -468,6 +471,9 @@ export class AIController {
 
       const aspectRatio: string = req.body.aspectRatio;
       const resolution: FashnResolution = req.body.resolution || FashnResolution.ONE_K;
+      const generationMode: FashnGenerationMode = req.body.generationMode || FashnGenerationMode.BALANCED;
+      const numImages: number = Math.min(4, Math.max(1, parseInt(req.body.numImages) || 1));
+      const seed: number | undefined = req.body.seed ? parseInt(req.body.seed) : undefined;
 
       if (!aspectRatio || !VALID_ASPECT_RATIOS.includes(aspectRatio)) {
         sendError(res, 400, `aspectRatio phải là một trong: ${VALID_ASPECT_RATIOS.join(', ')}.`); return;
@@ -493,17 +499,24 @@ export class AIController {
       const job = await CreditService.createAIJob({
         userId, type: AIJobType.REFRAME,
         creditCost: cost, provider: AIProvider.FASHN,
-        inputParams: { aspectRatio, resolution },
+        inputParams: { aspectRatio, resolution, generationMode, numImages },
       });
 
       res.status(202).json({ success: true, message: 'Đang xử lý...', data: { jobId: job.jobId, status: 'processing' } });
 
-      setImmediate(() => runInBackground({
+      scheduleJob({
         userId, jobId: job.jobId, cost,
         description: `Reframe (${aspectRatio})`,
         filePrefix: 'reframe',
-        fashnCall: () => fashnService.reframe({ image: image!, aspectRatio, resolution }),
-      }));
+        modelName: 'reframe',
+        inputs: {
+          image, aspect_ratio: aspectRatio,
+          resolution, generation_mode: generationMode,
+          ...(numImages > 1      && { num_images: numImages }),
+          ...(seed !== undefined && { seed }),
+        },
+        pollingFallback: () => fashnService.reframe({ image: image!, aspectRatio, resolution, generationMode, numImages, seed }),
+      });
     } catch (err: any) {
       console.error('[AIController.reframe]', err);
       sendError(res, 500, err.message);
@@ -635,13 +648,29 @@ export class AIController {
       const resolution: FashnResolution = req.body.resolution || FashnResolution.ONE_K;
       const generationMode: FashnGenerationMode = req.body.generationMode || FashnGenerationMode.BALANCED;
 
+      const numImages: number = Math.min(4, Math.max(1, parseInt(req.body.numImages) || 1));
+      const seed: number | undefined = req.body.seed ? parseInt(req.body.seed) : undefined;
+
       const creditCheck = await CreditService.checkCredit(userId, cost);
       if (!creditCheck.ok) { sendError(res, 402, `Credit không đủ. Cần ${cost}, hiện có ${creditCheck.userCredit}.`); return; }
 
-      const job = await CreditService.createAIJob({ userId, type: AIJobType.MODEL_CREATE, prompt, creditCost: cost, provider: AIProvider.FASHN, inputParams: { resolution, generationMode, aspectRatio } });
+      const job = await CreditService.createAIJob({ userId, type: AIJobType.MODEL_CREATE, prompt, creditCost: cost, provider: AIProvider.FASHN, inputParams: { resolution, generationMode, aspectRatio, numImages } });
       res.status(202).json({ success: true, message: 'Đang xử lý...', data: { jobId: job.jobId, status: 'processing' } });
 
-      scheduleJob({ userId, jobId: job.jobId, cost, description: `Create model: ${prompt.slice(0, 60)}`, filePrefix: 'model_create', modelName: 'model-create', inputs: { prompt, image_reference: imageReference, aspect_ratio: aspectRatio, resolution, generation_mode: generationMode }, pollingFallback: () => fashnService.modelCreate({ prompt, imageReference, aspectRatio, resolution, generationMode }) });
+      scheduleJob({
+        userId, jobId: job.jobId, cost,
+        description: `Create model: ${prompt.slice(0, 60)}`,
+        filePrefix: 'model_create', modelName: 'model-create',
+        inputs: {
+          prompt,
+          ...(imageReference && { image_reference: imageReference }),
+          ...(aspectRatio    && { aspect_ratio:    aspectRatio }),
+          resolution, generation_mode: generationMode,
+          num_images: numImages,
+          ...(seed !== undefined && { seed }),
+        },
+        pollingFallback: () => fashnService.modelCreate({ prompt, imageReference, aspectRatio, resolution, generationMode, numImages, seed }),
+      });
     } catch (err: any) { console.error('[AIController.modelCreate]', err); sendError(res, 500, err.message); }
   }
 
