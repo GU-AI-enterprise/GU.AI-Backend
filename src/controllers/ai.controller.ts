@@ -15,7 +15,8 @@ import {
   FashnGenerationMode,
   CREDIT_COST,
 } from '../constants/ai';
-import { AssetCategory, AssetRole } from '../constants/asset';
+import { AssetCategory, AssetRole, AssetType } from '../constants/asset';
+import { StorageBucket } from '../services/storage.service';
 import { AdminEventService } from '../services/adminEvent.service';
 import { pendingWebhookJobs } from './webhook.controller';
 
@@ -31,12 +32,13 @@ async function downloadAndUpload(
   outputUrl: string,
   fileName: string,
   userId: string,
-  mimeType = 'image/png'
+  mimeType: string = 'image/png',
+  bucket: StorageBucket = 'assets'
 ): Promise<string> {
   const res = await fetch(outputUrl);
-  if (!res.ok) throw new Error('Không tải được ảnh output từ Fashn.');
+  if (!res.ok) throw new Error('Không tải được output từ Fashn.');
   const buffer = Buffer.from(await res.arrayBuffer());
-  return StorageService.uploadBuffer(buffer, fileName, mimeType, userId);
+  return StorageService.uploadBuffer(buffer, fileName, mimeType, userId, bucket);
 }
 
 /**
@@ -50,22 +52,29 @@ async function runInBackground(params: {
   cost: number;
   description: string;
   filePrefix: string;
+  isVideo?: boolean;
   fashnCall: () => Promise<{ outputUrl: string; predictionId: string }>;
 }): Promise<void> {
-  const { userId, jobId, cost, description, filePrefix, fashnCall } = params;
+  const { userId, jobId, cost, description, filePrefix, isVideo = false, fashnCall } = params;
 
   try {
     const result = await fashnCall();
 
-    const fileName = `${filePrefix}_${Date.now()}.png`;
-    const publicUrl = await downloadAndUpload(result.outputUrl, fileName, userId);
+    const ext    = isVideo ? 'mp4'       : 'png';
+    const mime   = isVideo ? 'video/mp4' : 'image/png';
+    const bucket: StorageBucket = isVideo ? 'videos' : 'assets';
+    const aType  = isVideo ? AssetType.VIDEO : AssetType.IMAGE;
+
+    const fileName  = `${filePrefix}_${Date.now()}.${ext}`;
+    const publicUrl = await downloadAndUpload(result.outputUrl, fileName, userId, mime, bucket);
 
     const asset = await CreditService.saveOutputAsset({
       userId,
       url: publicUrl,
       category: AssetCategory.OUTPUT,
-      mimeType: 'image/png',
+      mimeType: mime,
       fileName,
+      assetType: aType,
     });
 
     await CreditService.linkAssetToJob(jobId, asset.id, AssetRole.OUTPUT);
@@ -110,11 +119,12 @@ async function scheduleJob(params: {
   cost: number;
   description: string;
   filePrefix: string;
+  isVideo?: boolean;
   modelName: string;
   inputs: Record<string, any>;
   pollingFallback: () => Promise<{ outputUrl: string; predictionId: string }>;
 }): Promise<void> {
-  const { userId, jobId, cost, description, filePrefix, modelName, inputs, pollingFallback } = params;
+  const { userId, jobId, cost, description, filePrefix, isVideo = false, modelName, inputs, pollingFallback } = params;
   const serverUrl = process.env.SERVER_URL?.replace(/\/$/, '');
 
   AdminEventService.emit({
@@ -131,7 +141,7 @@ async function scheduleJob(params: {
         ...inputs,
         webhook_url: webhookUrl,
       });
-      pendingWebhookJobs.set(predictionId, { userId, jobId, cost, description, filePrefix });
+      pendingWebhookJobs.set(predictionId, { userId, jobId, cost, description, filePrefix, isVideo });
       console.log(`[AIController] Webhook mode — predictionId=${predictionId} → ${webhookUrl}`);
       return;
     } catch (err: any) {
@@ -140,7 +150,7 @@ async function scheduleJob(params: {
   }
 
   // Polling fallback
-  setImmediate(() => runInBackground({ userId, jobId, cost, description, filePrefix, fashnCall: pollingFallback }));
+  setImmediate(() => runInBackground({ userId, jobId, cost, description, filePrefix, isVideo, fashnCall: pollingFallback }));
 }
 
 // ─── Controller ───────────────────────────────────────────────────────────────
@@ -702,8 +712,7 @@ export class AIController {
       const job = await CreditService.createAIJob({ userId, type: AIJobType.IMAGE_TO_VIDEO, prompt: prompt || 'Image to video', creditCost: cost, provider: AIProvider.FASHN, inputParams: { duration, resolution } });
       res.status(202).json({ success: true, message: 'Đang xử lý...', data: { jobId: job.jobId, status: 'processing' } });
 
-      // Image to video output is MP4 — download and save as video asset
-      scheduleJob({ userId, jobId: job.jobId, cost, description: 'Image to video', filePrefix: 'video', modelName: 'image-to-video', inputs: { image, prompt, duration, resolution }, pollingFallback: () => fashnService.imageToVideo({ image: image!, prompt, duration, resolution }) });
+      scheduleJob({ userId, jobId: job.jobId, cost, description: 'Image to video', filePrefix: 'video', isVideo: true, modelName: 'image-to-video', inputs: { image, prompt, duration, resolution }, pollingFallback: () => fashnService.imageToVideo({ image: image!, prompt, duration, resolution }) });
     } catch (err: any) { console.error('[AIController.imageToVideo]', err); sendError(res, 500, err.message); }
   }
 }

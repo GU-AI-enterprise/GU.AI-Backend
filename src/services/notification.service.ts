@@ -41,12 +41,21 @@ export class NotificationService {
       }
 
       // Push real-time via socket
+      type SocketAlertType = 'success' | 'info' | 'warning' | 'error';
+      const socketTypeMap: Record<NotificationType, SocketAlertType> = {
+        [NotificationType.PAYMENT]:   'success',
+        [NotificationType.AI_JOB]:    'success',
+        [NotificationType.PROMOTION]: 'success',
+        [NotificationType.SECURITY]:  'warning',
+        [NotificationType.SUPPORT]:   'info',
+        [NotificationType.SYSTEM]:    'info',
+      };
       SocketService.sendNotification({
         userId: params.userId,
-        type: params.type === NotificationType.PROMOTION ? 'success' : 'info',
+        type: socketTypeMap[params.type] ?? 'info',
         title: params.title,
         message: params.content,
-        data: { notificationId: data.id, ...(params.data ?? {}) },
+        data: { notificationId: data.id, category: params.type, ...(params.data ?? {}) },
       });
     } catch (err: any) {
       console.error('[NotificationService] Unexpected error:', err.message);

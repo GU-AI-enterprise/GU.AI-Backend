@@ -1,6 +1,8 @@
 import { Response } from 'express';
 import { AuthRequest } from '../middlewares/auth.middleware';
 import { PayOSService } from '../services/payos.service';
+import { NotificationService } from '../services/notification.service';
+import { NotificationType, NotificationPriority } from '../constants/notification';
 import { supabaseAdmin } from '../config/supabase';
 import { AdminEventService } from '../services/adminEvent.service';
 import { UserRole } from '../types/role';
@@ -264,6 +266,19 @@ export class PaymentController {
       const { data: updatedUser } = await supabaseAdmin!
         .from('users').select('current_credit').eq('id', userId).single();
       const newBalance = updatedUser?.current_credit ?? 0;
+
+      // Persist notification and push to user via socket
+      const creditBreakdown = pkg?.bonus_credit
+        ? `${pkg.credit_amount.toLocaleString()} credits + ${pkg.bonus_credit.toLocaleString()} bonus`
+        : `${totalCredits.toLocaleString()} credits`;
+      await NotificationService.create({
+        userId,
+        type: NotificationType.PAYMENT,
+        priority: NotificationPriority.HIGH,
+        title: 'Nạp tiền thành công',
+        content: `Gói ${packageName}: +${creditBreakdown}. Số dư mới: ${newBalance.toLocaleString()} credits.`,
+        data: { transactionId: tx.id, credits: totalCredits, newBalance, packageName },
+      });
 
       AdminEventService.emit({
         type: 'payment_updated',

@@ -1,12 +1,14 @@
 import { Request, Response } from 'express';
 import { CreditService } from '../services/credit.service';
-import { StorageService } from '../services/storage.service';
+import { StorageService, StorageBucket } from '../services/storage.service';
 import { SocketService } from '../services/socket.service';
 import { AdminEventService } from '../services/adminEvent.service';
 import { PayOSService } from '../services/payos.service';
+import { NotificationService } from '../services/notification.service';
+import { NotificationType, NotificationPriority } from '../constants/notification';
 import { supabaseAdmin } from '../config/supabase';
 import { AIJobStatus } from '../constants/ai';
-import { AssetCategory, AssetRole } from '../constants/asset';
+import { AssetCategory, AssetRole, AssetType } from '../constants/asset';
 
 export interface PendingWebhookJob {
   userId: string;
@@ -14,6 +16,7 @@ export interface PendingWebhookJob {
   cost: number;
   description: string;
   filePrefix: string;
+  isVideo?: boolean;
 }
 
 /** predictionId (Fashn) → job context */
@@ -66,19 +69,27 @@ export class WebhookController {
       }
 
       const outputUrl = payload.output[0];
-      const fileName = `${filePrefix}_${Date.now()}.png`;
+      const isVideo = context.isVideo ?? false;
+
+      const ext    = isVideo ? 'mp4'       : 'png';
+      const mime   = isVideo ? 'video/mp4' : 'image/png';
+      const bucket: StorageBucket = isVideo ? 'videos' : 'assets';
+      const aType  = isVideo ? AssetType.VIDEO : AssetType.IMAGE;
+
+      const fileName = `${filePrefix}_${Date.now()}.${ext}`;
 
       const dlRes = await fetch(outputUrl);
-      if (!dlRes.ok) throw new Error('Không tải được ảnh output từ Fashn (webhook).');
+      if (!dlRes.ok) throw new Error('Không tải được output từ Fashn (webhook).');
       const buffer = Buffer.from(await dlRes.arrayBuffer());
-      const publicUrl = await StorageService.uploadBuffer(buffer, fileName, 'image/png', userId);
+      const publicUrl = await StorageService.uploadBuffer(buffer, fileName, mime, userId, bucket);
 
       const asset = await CreditService.saveOutputAsset({
         userId,
         url: publicUrl,
         category: AssetCategory.OUTPUT,
-        mimeType: 'image/png',
+        mimeType: mime,
         fileName,
+        assetType: aType,
       });
 
       await CreditService.linkAssetToJob(jobId, asset.id, AssetRole.OUTPUT);
@@ -170,13 +181,17 @@ export class WebhookController {
         .single();
       const newBalance = updatedUser?.current_credit ?? 0;
 
-      // Notify user via socket
-      SocketService.sendNotification({
+      // Persist notification and push to user via socket
+      const creditBreakdown = pkg?.bonus_credit
+        ? `${pkg.credit_amount.toLocaleString()} credits + ${pkg.bonus_credit.toLocaleString()} bonus`
+        : `${totalCredits.toLocaleString()} credits`;
+      await NotificationService.create({
         userId: tx.user_id,
-        type: 'success',
-        title: 'Thanh toán thành công',
-        message: `Bạn đã nhận được ${totalCredits} credits từ gói ${packageName}`,
-        data: { transactionId: tx.id, credits: totalCredits, newBalance },
+        type: NotificationType.PAYMENT,
+        priority: NotificationPriority.HIGH,
+        title: 'Nạp tiền thành công',
+        content: `Gói ${packageName}: +${creditBreakdown}. Số dư mới: ${newBalance.toLocaleString()} credits.`,
+        data: { transactionId: tx.id, credits: totalCredits, newBalance, packageName },
       });
 
       AdminEventService.emit({

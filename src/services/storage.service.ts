@@ -1,5 +1,7 @@
 import { supabaseAdmin } from '../config/supabase';
 
+export type StorageBucket = 'assets' | 'videos';
+
 export class StorageService {
   private static getClient() {
     if (!supabaseAdmin) {
@@ -9,16 +11,18 @@ export class StorageService {
   }
 
   /**
-   * Upload buffer lên Supabase Storage bucket 'assets'.
+   * Upload buffer lên Supabase Storage.
+   * bucket = 'assets' (default) cho ảnh, 'videos' cho video MP4.
    * Trả về public URL.
    */
   public static async uploadBuffer(
     buffer: Buffer,
     fileName: string,
     mimeType: string,
-    userId: string
+    userId: string,
+    bucket: StorageBucket = 'assets'
   ): Promise<string> {
-    return StorageService.uploadToPath(buffer, `${userId}/${Date.now()}_${fileName}`, mimeType);
+    return StorageService.uploadToPath(buffer, `${userId}/${Date.now()}_${fileName}`, mimeType, bucket);
   }
 
   public static async uploadSupportImage(
@@ -29,20 +33,21 @@ export class StorageService {
   ): Promise<string> {
     const ext = fileName.split('.').pop() ?? 'jpg';
     const path = `support/${conversationId}/${Date.now()}.${ext}`;
-    return StorageService.uploadToPath(buffer, path, mimeType);
+    return StorageService.uploadToPath(buffer, path, mimeType, 'assets');
   }
 
   private static async uploadToPath(
     buffer: Buffer,
     path: string,
-    mimeType: string
+    mimeType: string,
+    bucket: StorageBucket = 'assets'
   ): Promise<string> {
     const client = this.getClient();
     const { error } = await client.storage
-      .from('assets')
+      .from(bucket)
       .upload(path, buffer, { contentType: mimeType, upsert: false });
-    if (error) throw new Error(`Upload failed: ${error.message}`);
-    const { data } = client.storage.from('assets').getPublicUrl(path);
+    if (error) throw new Error(`Upload failed (bucket=${bucket}): ${error.message}`);
+    const { data } = client.storage.from(bucket).getPublicUrl(path);
     return data.publicUrl;
   }
 }

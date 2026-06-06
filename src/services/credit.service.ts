@@ -169,7 +169,7 @@ export class CreditService {
   }
 
   /**
-   * Tạo asset record từ ảnh AI generate.
+   * Tạo asset record từ output AI generate (ảnh hoặc video).
    */
   public static async saveOutputAsset(params: {
     userId: string;
@@ -179,6 +179,7 @@ export class CreditService {
     fileName?: string;
     width?: number;
     height?: number;
+    assetType?: AssetType;
   }) {
     const client = this.getClient();
 
@@ -186,7 +187,7 @@ export class CreditService {
       .from('assets')
       .insert({
         user_id: params.userId,
-        type: AssetType.IMAGE,
+        type: params.assetType ?? AssetType.IMAGE,
         category: params.category,
         url: params.url,
         mime_type: params.mimeType || 'image/png',
