@@ -31,9 +31,7 @@ export interface TryOnOptions {
 }
 
 export interface TryOnMaxOptions {
-  /** Ảnh sản phẩm/trang phục */
   productImage: string;
-  /** Ảnh người mẫu */
   modelImage: string;
   resolution?: FashnResolution;
   generationMode?: 'balanced' | 'quality';
@@ -44,13 +42,9 @@ export interface TryOnMaxOptions {
 export interface ProductToModelOptions {
   productImage: string;
   prompt?: string;
-  /** Ảnh gợi ý pose/môi trường/ánh sáng */
   imagePrompt?: string;
-  /** Ảnh mặt tham chiếu — giữ identity cụ thể (+3 credits/output) */
   faceReference?: string;
-  /** Cách áp dụng face reference */
   faceReferenceMode?: 'match_base' | 'match_reference';
-  /** Ảnh nền tham chiếu */
   backgroundReference?: string;
   aspectRatio?: string;
   resolution?: FashnResolution;
@@ -67,6 +61,7 @@ export interface ReframeOptions {
   generationMode?: FashnGenerationMode;
   numImages?: number;
   seed?: number;
+  outputFormat?: 'png' | 'jpeg';
 }
 
 export interface EditImageOptions {
@@ -74,39 +69,40 @@ export interface EditImageOptions {
   prompt: string;
   /** PNG mask cùng kích thước: trắng = vùng ưu tiên, đen = giữ nguyên */
   mask?: string;
-  /** Ảnh ngữ cảnh tham chiếu — dùng khi không thể mô tả bằng văn bản (pose, nền, texture) */
   imageContext?: string;
   resolution?: FashnResolution;
   generationMode?: FashnGenerationMode;
   seed?: number;
-  /** Số ảnh cần tạo trong một request (1–4) */
   numImages?: number;
   outputFormat?: 'png' | 'jpeg';
 }
 
 export interface FaceToModelOptions {
-  /** Ảnh mặt / headshot */
   faceImage: string;
   prompt?: string;
   aspectRatio?: string;
   resolution?: FashnResolution;
   generationMode?: FashnGenerationMode;
+  numImages?: number;
+  seed?: number;
+  outputFormat?: 'png' | 'jpeg';
 }
 
 export interface ModelCreateOptions {
-  /** Prompt mô tả model thời trang muốn tạo */
   prompt: string;
-  /** Ảnh tham chiếu về pose/composition (tuỳ chọn) */
   imageReference?: string;
+  /** Ảnh khuôn mặt tham chiếu để khóa identity qua nhiều generation (+3 Fashn credits/image) */
+  faceReference?: string;
+  faceReferenceMode?: 'match_base' | 'match_reference';
   aspectRatio?: string;
   resolution?: FashnResolution;
   generationMode?: FashnGenerationMode;
   numImages?: number;
   seed?: number;
+  outputFormat?: 'png' | 'jpeg';
 }
 
 export interface ModelSwapOptions {
-  /** Ảnh thời trang với model hiện tại */
   modelImage: string;
   prompt?: string;
   faceReference?: string;
@@ -124,6 +120,8 @@ export interface ImageToVideoOptions {
   duration?: 5 | 10;
   /** 480p | 720p | 1080p */
   resolution?: string;
+  /** Frame cuối video — chỉ hợp lệ khi resolution = "1080p" */
+  endImage?: string;
 }
 
 // ─── Fashn status response type ────────────────────────────────────────────────
@@ -131,7 +129,8 @@ export interface ImageToVideoOptions {
 interface FashnStatusResponse {
   id: string;
   status: 'starting' | 'in_queue' | 'processing' | 'completed' | 'failed';
-  output?: string[];
+  // Most endpoints: output is string[]; face-to-model: output is { images: string[] }
+  output?: string[] | { images: string[] };
   error?: { name?: string; message?: string } | string | null;
 }
 
@@ -156,13 +155,11 @@ class FashnService {
 
   // ── Core: submit job → get predictionId ──────────────────────────────────────
 
-  /** Public: submit a job to Fashn and return predictionId + actual Fashn credits consumed. */
   public async submitJob(modelName: string, inputs: Record<string, any>): Promise<{ predictionId: string; fashnCreditsUsed: number }> {
     const { id, fashnCreditsUsed } = await this.run(modelName, inputs);
     return { predictionId: id, fashnCreditsUsed };
   }
 
-  /** Public: poll a predictionId until it completes or times out. */
   public async waitForJob(predictionId: string): Promise<string> {
     return this.pollUntilDone(predictionId);
   }
@@ -206,7 +203,11 @@ class FashnService {
       console.log(`[FashnService] ${predictionId} → ${data.status}`);
 
       if (data.status === 'completed') {
-        const outputUrl = data.output?.[0];
+        // face-to-model returns { images: [...] }; all other endpoints return string[]
+        const outputUrl = Array.isArray(data.output)
+          ? data.output[0]
+          : (data.output as { images: string[] } | undefined)?.images?.[0];
+
         if (!outputUrl) throw new Error('Fashn trả về kết quả rỗng.');
         return outputUrl;
       }
@@ -285,10 +286,11 @@ class FashnService {
 
   public async reframe(options: ReframeOptions): Promise<FashnResult> {
     const inputs: Record<string, any> = { image: options.image, aspect_ratio: options.aspectRatio };
-    if (options.resolution)         inputs.resolution      = options.resolution;
-    if (options.generationMode)     inputs.generation_mode = options.generationMode;
+    if (options.resolution)          inputs.resolution      = options.resolution;
+    if (options.generationMode)      inputs.generation_mode = options.generationMode;
     if (options.numImages && options.numImages > 1) inputs.num_images = options.numImages;
-    if (options.seed !== undefined) inputs.seed            = options.seed;
+    if (options.seed !== undefined)  inputs.seed            = options.seed;
+    if (options.outputFormat)        inputs.output_format   = options.outputFormat;
 
     const { id, fashnCreditsUsed } = await this.run('reframe', inputs);
     const outputUrl = await this.pollUntilDone(id);
@@ -316,12 +318,16 @@ class FashnService {
 
   public async faceToModel(options: FaceToModelOptions): Promise<FashnResult> {
     const inputs: Record<string, any> = { face_image: options.faceImage };
-    if (options.prompt)        inputs.prompt          = options.prompt;
-    if (options.aspectRatio)   inputs.aspect_ratio    = options.aspectRatio;
-    if (options.resolution)    inputs.resolution      = options.resolution;
-    if (options.generationMode)inputs.generation_mode = options.generationMode;
+    if (options.prompt)              inputs.prompt          = options.prompt;
+    if (options.aspectRatio)         inputs.aspect_ratio    = options.aspectRatio;
+    if (options.resolution)          inputs.resolution      = options.resolution;
+    if (options.generationMode)      inputs.generation_mode = options.generationMode;
+    if (options.numImages && options.numImages > 1) inputs.num_images = options.numImages;
+    if (options.seed !== undefined)  inputs.seed            = options.seed;
+    if (options.outputFormat)        inputs.output_format   = options.outputFormat;
 
     const { id, fashnCreditsUsed } = await this.run('face-to-model', inputs);
+    // face-to-model returns output.images[] — handled in pollUntilDone
     const outputUrl = await this.pollUntilDone(id);
     return { outputUrl, predictionId: id, fashnCreditsUsed };
   }
@@ -330,12 +336,15 @@ class FashnService {
 
   public async modelCreate(options: ModelCreateOptions): Promise<FashnResult> {
     const inputs: Record<string, any> = { prompt: options.prompt };
-    if (options.imageReference)      inputs.image_reference = options.imageReference;
-    if (options.aspectRatio)         inputs.aspect_ratio    = options.aspectRatio;
-    if (options.resolution)          inputs.resolution      = options.resolution;
-    if (options.generationMode)      inputs.generation_mode = options.generationMode;
+    if (options.imageReference)      inputs.image_reference     = options.imageReference;
+    if (options.faceReference)       inputs.face_reference      = options.faceReference;
+    if (options.faceReferenceMode)   inputs.face_reference_mode = options.faceReferenceMode;
+    if (options.aspectRatio)         inputs.aspect_ratio        = options.aspectRatio;
+    if (options.resolution)          inputs.resolution          = options.resolution;
+    if (options.generationMode)      inputs.generation_mode     = options.generationMode;
     if (options.numImages && options.numImages > 1) inputs.num_images = options.numImages;
-    if (options.seed !== undefined)  inputs.seed            = options.seed;
+    if (options.seed !== undefined)  inputs.seed                = options.seed;
+    if (options.outputFormat)        inputs.output_format       = options.outputFormat;
 
     const { id, fashnCreditsUsed } = await this.run('model-create', inputs);
     const outputUrl = await this.pollUntilDone(id);
@@ -364,9 +373,11 @@ class FashnService {
 
   public async imageToVideo(options: ImageToVideoOptions): Promise<FashnResult> {
     const inputs: Record<string, any> = { image: options.image };
-    if (options.prompt)    inputs.prompt      = options.prompt;
-    if (options.duration)  inputs.duration    = options.duration;
-    if (options.resolution)inputs.resolution  = options.resolution;
+    if (options.prompt)     inputs.prompt      = options.prompt;
+    if (options.duration)   inputs.duration    = options.duration;
+    if (options.resolution) inputs.resolution  = options.resolution;
+    // end_image only valid when resolution = "1080p"
+    if (options.endImage && options.resolution === '1080p') inputs.end_image = options.endImage;
 
     const { id, fashnCreditsUsed } = await this.run('image-to-video', inputs);
     const outputUrl = await this.pollUntilDone(id);

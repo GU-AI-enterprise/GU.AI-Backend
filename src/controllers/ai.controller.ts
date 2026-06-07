@@ -14,18 +14,20 @@ import {
   FashnResolution,
   FashnGenerationMode,
   CREDIT_COST,
-  computeEditCreditCost,
+  computeVariableCreditCost,
+  computeVideoCredits,
 } from '../constants/ai';
 import { AssetCategory, AssetRole, AssetType } from '../constants/asset';
 import { StorageBucket } from '../services/storage.service';
 import { AdminEventService } from '../services/adminEvent.service';
 import { pendingWebhookJobs } from './webhook.controller';
 
-const VALID_CATEGORIES = Object.values(TryOnCategory);
-const VALID_MODES = Object.values(TryOnMode);
+const VALID_CATEGORIES  = Object.values(TryOnCategory);
+const VALID_MODES       = Object.values(TryOnMode);
 const VALID_RESOLUTIONS = Object.values(FashnResolution);
-const VALID_GEN_MODES = Object.values(FashnGenerationMode);
+const VALID_GEN_MODES   = Object.values(FashnGenerationMode);
 const VALID_ASPECT_RATIOS = ['21:9', '1:1', '4:3', '3:2', '2:3', '5:4', '4:5', '3:4', '16:9', '9:16'];
+const VALID_VIDEO_RESOLUTIONS = ['480p', '720p', '1080p'];
 
 // ─── Shared helpers ───────────────────────────────────────────────────────────
 
@@ -163,7 +165,7 @@ export class AIController {
 
   // ── POST /api/ai/test ────────────────────────────────────────────────────────
 
-  public async testConnection(req: AuthRequest, res: Response): Promise<void> {
+  public async testConnection(_req: AuthRequest, res: Response): Promise<void> {
     try {
       const result = await fashnService.testConnection();
       sendSuccess(res, {
@@ -179,7 +181,7 @@ export class AIController {
 
   // ── GET /api/ai/credits ───────────────────────────────────────────────────────
 
-  public async getCredits(req: AuthRequest, res: Response): Promise<void> {
+  public async getCredits(_req: AuthRequest, res: Response): Promise<void> {
     try {
       const credits = await fashnService.getCredits();
       sendSuccess(res, { message: 'Lấy credits Fashn.ai thành công.', data: credits });
@@ -209,7 +211,7 @@ export class AIController {
   // ── POST /api/ai/try-on ───────────────────────────────────────────────────────
 
   public async tryOn(req: AuthRequest, res: Response): Promise<void> {
-    const cost = CREDIT_COST[AIJobType.TRY_ON];
+    const cost = CREDIT_COST[AIJobType.TRY_ON]; // fixed: 2
 
     try {
       const userId = req.user?.id;
@@ -235,7 +237,7 @@ export class AIController {
         ? `data:${files['garmentImage'][0].mimetype};base64,${files['garmentImage'][0].buffer.toString('base64')}`
         : (req.body.garmentImageUrl as string | undefined);
 
-      if (!modelImage) { sendError(res, 400, 'Cần cung cấp modelImage (file) hoặc modelImageUrl.'); return; }
+      if (!modelImage)   { sendError(res, 400, 'Cần cung cấp modelImage (file) hoặc modelImageUrl.'); return; }
       if (!garmentImage) { sendError(res, 400, 'Cần cung cấp garmentImage (file) hoặc garmentImageUrl.'); return; }
 
       const creditCheck = await CreditService.checkCredit(userId, cost);
@@ -250,7 +252,6 @@ export class AIController {
         inputParams: { category, mode },
       });
 
-      // Return 202 immediately — Fashn runs in background (webhook or polling)
       res.status(202).json({ success: true, message: 'Đang xử lý...', data: { jobId: job.jobId, status: 'processing' } });
 
       scheduleJob({
@@ -270,8 +271,6 @@ export class AIController {
   // ── POST /api/ai/try-on-max ───────────────────────────────────────────────────
 
   public async tryOnMax(req: AuthRequest, res: Response): Promise<void> {
-    const cost = CREDIT_COST[AIJobType.TRY_ON_MAX];
-
     try {
       const userId = req.user?.id;
       if (!userId) { sendError(res, 401, 'Không tìm thấy thông tin xác thực người dùng.'); return; }
@@ -288,6 +287,14 @@ export class AIController {
         sendError(res, 400, 'generationMode phải là balanced hoặc quality.'); return;
       }
 
+      // tryon-max chỉ có balanced/quality (không có fast)
+      const cost = computeVariableCreditCost(
+        generationMode as FashnGenerationMode,
+        resolution,
+        numImages,
+        false,
+      );
+
       const files = (req as any).files as Record<string, Express.Multer.File[]> | undefined;
 
       const productImage = files?.['productImage']?.[0]
@@ -299,7 +306,7 @@ export class AIController {
         : (req.body.modelImageUrl as string | undefined);
 
       if (!productImage) { sendError(res, 400, 'Cần cung cấp productImage (file) hoặc productImageUrl.'); return; }
-      if (!modelImage) { sendError(res, 400, 'Cần cung cấp modelImage (file) hoặc modelImageUrl.'); return; }
+      if (!modelImage)   { sendError(res, 400, 'Cần cung cấp modelImage (file) hoặc modelImageUrl.'); return; }
 
       const creditCheck = await CreditService.checkCredit(userId, cost);
       if (!creditCheck.ok) {
@@ -313,21 +320,23 @@ export class AIController {
         inputParams: { resolution, generationMode, numImages },
       });
 
-      res.status(202).json({ success: true, message: 'Đang xử lý...', data: { jobId: job.jobId, status: 'processing' } });
+      res.status(202).json({ success: true, message: 'Đang xử lý...', data: { jobId: job.jobId, status: 'processing', cost } });
 
-      AdminEventService.emit({
-        type: 'job_created',
-        message: `Bắt đầu: Virtual try-on Max (${resolution})`,
-        userId,
-        metadata: { jobId: job.jobId },
-      });
-
-      setImmediate(() => runInBackground({
+      scheduleJob({
         userId, jobId: job.jobId, cost,
-        description: `Virtual try-on Max (${resolution})`,
+        description: `Virtual try-on Max (${resolution}, ${generationMode})`,
         filePrefix: 'tryon_max',
-        fashnCall: () => fashnService.tryOnMax({ productImage: productImage!, modelImage: modelImage!, resolution, generationMode, numImages, prompt }),
-      }));
+        modelName: 'tryon-max',
+        inputs: {
+          product_image: productImage,
+          model_image: modelImage,
+          resolution,
+          generation_mode: generationMode,
+          num_images: numImages,
+          ...(prompt && { prompt }),
+        },
+        pollingFallback: () => fashnService.tryOnMax({ productImage: productImage!, modelImage: modelImage!, resolution, generationMode, numImages, prompt }),
+      });
     } catch (err: any) {
       console.error('[AIController.tryOnMax]', err);
       sendError(res, 500, err.message);
@@ -337,7 +346,7 @@ export class AIController {
   // ── POST /api/ai/remove-background ────────────────────────────────────────────
 
   public async removeBackground(req: AuthRequest, res: Response): Promise<void> {
-    const cost = CREDIT_COST[AIJobType.REMOVE_BG];
+    const cost = CREDIT_COST[AIJobType.REMOVE_BG]; // fixed: 2
 
     try {
       const userId = req.user?.id;
@@ -364,12 +373,14 @@ export class AIController {
 
       res.status(202).json({ success: true, message: 'Đang xử lý...', data: { jobId: job.jobId, status: 'processing' } });
 
-      setImmediate(() => runInBackground({
+      scheduleJob({
         userId, jobId: job.jobId, cost,
         description: 'Background remove',
         filePrefix: 'bg_remove',
-        fashnCall: () => fashnService.removeBackground(imageInput!),
-      }));
+        modelName: 'background-remove',
+        inputs: { image: imageInput },
+        pollingFallback: () => fashnService.removeBackground(imageInput!),
+      });
     } catch (err: any) {
       console.error('[AIController.removeBackground]', err);
       sendError(res, 500, err.message);
@@ -379,14 +390,12 @@ export class AIController {
   // ── POST /api/ai/product-to-model ─────────────────────────────────────────────
 
   public async productToModel(req: AuthRequest, res: Response): Promise<void> {
-    const cost = CREDIT_COST[AIJobType.PRODUCT_TO_MODEL];
-
     try {
       const userId = req.user?.id;
       if (!userId) { sendError(res, 401, 'Không tìm thấy thông tin xác thực người dùng.'); return; }
 
       const resolution: FashnResolution    = req.body.resolution     || FashnResolution.ONE_K;
-      const generationMode: FashnGenerationMode = req.body.generationMode || FashnGenerationMode.BALANCED;
+      const generationMode: FashnGenerationMode = req.body.generationMode || FashnGenerationMode.FAST;
 
       if (!VALID_RESOLUTIONS.includes(resolution)) {
         sendError(res, 400, `resolution phải là một trong: ${VALID_RESOLUTIONS.join(', ')}.`); return;
@@ -396,7 +405,6 @@ export class AIController {
       }
 
       const files = (req as any).files as Record<string, Express.Multer.File[]> | undefined;
-
       const toBase64 = (file: Express.Multer.File) =>
         `data:${file.mimetype};base64,${file.buffer.toString('base64')}`;
 
@@ -425,6 +433,8 @@ export class AIController {
       const numImages: number = Math.min(4, Math.max(1, parseInt(req.body.numImages) || 1));
       const seed: number | undefined = req.body.seed ? parseInt(req.body.seed) : undefined;
 
+      const cost = computeVariableCreditCost(generationMode, resolution, numImages, !!faceReference);
+
       const creditCheck = await CreditService.checkCredit(userId, cost);
       if (!creditCheck.ok) {
         sendError(res, 402, `Credit không đủ. Cần ${cost}, hiện có ${creditCheck.userCredit}.`); return;
@@ -434,10 +444,10 @@ export class AIController {
         userId, type: AIJobType.PRODUCT_TO_MODEL,
         prompt: prompt || 'Product to model',
         creditCost: cost, provider: AIProvider.FASHN,
-        inputParams: { resolution, generationMode, aspectRatio, numImages },
+        inputParams: { resolution, generationMode, aspectRatio, numImages, hasFaceRef: !!faceReference },
       });
 
-      res.status(202).json({ success: true, message: 'Đang xử lý...', data: { jobId: job.jobId, status: 'processing' } });
+      res.status(202).json({ success: true, message: 'Đang xử lý...', data: { jobId: job.jobId, status: 'processing', cost } });
 
       scheduleJob({
         userId, jobId: job.jobId, cost,
@@ -471,15 +481,13 @@ export class AIController {
   // ── POST /api/ai/reframe ──────────────────────────────────────────────────────
 
   public async reframe(req: AuthRequest, res: Response): Promise<void> {
-    const cost = CREDIT_COST[AIJobType.REFRAME];
-
     try {
       const userId = req.user?.id;
       if (!userId) { sendError(res, 401, 'Không tìm thấy thông tin xác thực người dùng.'); return; }
 
       const aspectRatio: string = req.body.aspectRatio;
       const resolution: FashnResolution = req.body.resolution || FashnResolution.ONE_K;
-      const generationMode: FashnGenerationMode = req.body.generationMode || FashnGenerationMode.BALANCED;
+      const generationMode: FashnGenerationMode = req.body.generationMode || FashnGenerationMode.FAST;
       const numImages: number = Math.min(4, Math.max(1, parseInt(req.body.numImages) || 1));
       const seed: number | undefined = req.body.seed ? parseInt(req.body.seed) : undefined;
 
@@ -489,6 +497,11 @@ export class AIController {
       if (!VALID_RESOLUTIONS.includes(resolution)) {
         sendError(res, 400, `resolution phải là một trong: ${VALID_RESOLUTIONS.join(', ')}.`); return;
       }
+      if (!VALID_GEN_MODES.includes(generationMode)) {
+        sendError(res, 400, `generationMode phải là một trong: ${VALID_GEN_MODES.join(', ')}.`); return;
+      }
+
+      const cost = computeVariableCreditCost(generationMode, resolution, numImages, false);
 
       const files = (req as any).files as Record<string, Express.Multer.File[]> | undefined;
       const imageFile = files?.['image']?.[0];
@@ -510,7 +523,7 @@ export class AIController {
         inputParams: { aspectRatio, resolution, generationMode, numImages },
       });
 
-      res.status(202).json({ success: true, message: 'Đang xử lý...', data: { jobId: job.jobId, status: 'processing' } });
+      res.status(202).json({ success: true, message: 'Đang xử lý...', data: { jobId: job.jobId, status: 'processing', cost } });
 
       scheduleJob({
         userId, jobId: job.jobId, cost,
@@ -554,7 +567,7 @@ export class AIController {
       const numImages = Math.min(4, Math.max(1, parseInt(req.body.numImages) || 1));
       const seed: number | undefined = req.body.seed !== undefined ? parseInt(req.body.seed) : undefined;
 
-      const cost = computeEditCreditCost(generationMode, resolution, numImages);
+      const cost = computeVariableCreditCost(generationMode, resolution, numImages, false);
 
       const files = (req as any).files as Record<string, Express.Multer.File[]> | undefined;
       const toBase64 = (f: Express.Multer.File) => `data:${f.mimetype};base64,${f.buffer.toString('base64')}`;
@@ -609,7 +622,6 @@ export class AIController {
   // ── POST /api/ai/face-to-model ────────────────────────────────────────────────
 
   public async faceToModel(req: AuthRequest, res: Response): Promise<void> {
-    const cost = CREDIT_COST[AIJobType.FACE_TO_MODEL];
     try {
       const userId = req.user?.id;
       if (!userId) { sendError(res, 401, 'Không tìm thấy thông tin xác thực người dùng.'); return; }
@@ -624,21 +636,55 @@ export class AIController {
       const prompt: string | undefined = req.body.prompt?.trim() || undefined;
       const aspectRatio: string | undefined = req.body.aspectRatio || undefined;
       const resolution: FashnResolution = req.body.resolution || FashnResolution.ONE_K;
+      const generationMode: FashnGenerationMode = req.body.generationMode || FashnGenerationMode.FAST;
+      const numImages: number = Math.min(4, Math.max(1, parseInt(req.body.numImages) || 1));
+      const seed: number | undefined = req.body.seed ? parseInt(req.body.seed) : undefined;
+
+      if (!VALID_RESOLUTIONS.includes(resolution)) {
+        sendError(res, 400, `resolution phải là một trong: ${VALID_RESOLUTIONS.join(', ')}.`); return;
+      }
+      if (!VALID_GEN_MODES.includes(generationMode)) {
+        sendError(res, 400, `generationMode phải là một trong: ${VALID_GEN_MODES.join(', ')}.`); return;
+      }
+
+      const cost = computeVariableCreditCost(generationMode, resolution, numImages, false);
 
       const creditCheck = await CreditService.checkCredit(userId, cost);
       if (!creditCheck.ok) { sendError(res, 402, `Credit không đủ. Cần ${cost}, hiện có ${creditCheck.userCredit}.`); return; }
 
-      const job = await CreditService.createAIJob({ userId, type: AIJobType.FACE_TO_MODEL, prompt: prompt || 'Face to model', creditCost: cost, provider: AIProvider.FASHN, inputParams: { resolution, aspectRatio } });
-      res.status(202).json({ success: true, message: 'Đang xử lý...', data: { jobId: job.jobId, status: 'processing' } });
+      const job = await CreditService.createAIJob({
+        userId, type: AIJobType.FACE_TO_MODEL,
+        prompt: prompt || 'Face to model',
+        creditCost: cost, provider: AIProvider.FASHN,
+        inputParams: { resolution, generationMode, aspectRatio, numImages },
+      });
+      res.status(202).json({ success: true, message: 'Đang xử lý...', data: { jobId: job.jobId, status: 'processing', cost } });
 
-      scheduleJob({ userId, jobId: job.jobId, cost, description: 'Face to model', filePrefix: 'face_to_model', modelName: 'face-to-model', inputs: { face_image: faceImage, prompt, aspect_ratio: aspectRatio, resolution }, pollingFallback: () => fashnService.faceToModel({ faceImage: faceImage!, prompt, aspectRatio, resolution }) });
-    } catch (err: any) { console.error('[AIController.faceToModel]', err); sendError(res, 500, err.message); }
+      scheduleJob({
+        userId, jobId: job.jobId, cost,
+        description: 'Face to model',
+        filePrefix: 'face_to_model',
+        modelName: 'face-to-model',
+        inputs: {
+          face_image: faceImage,
+          ...(prompt      && { prompt }),
+          ...(aspectRatio && { aspect_ratio: aspectRatio }),
+          resolution,
+          generation_mode: generationMode,
+          ...(numImages > 1      && { num_images: numImages }),
+          ...(seed !== undefined && { seed }),
+        },
+        pollingFallback: () => fashnService.faceToModel({ faceImage: faceImage!, prompt, aspectRatio, resolution, generationMode, numImages, seed }),
+      });
+    } catch (err: any) {
+      console.error('[AIController.faceToModel]', err);
+      sendError(res, 500, err.message);
+    }
   }
 
   // ── POST /api/ai/model-create ─────────────────────────────────────────────────
 
   public async modelCreate(req: AuthRequest, res: Response): Promise<void> {
-    const cost = CREDIT_COST[AIJobType.MODEL_CREATE];
     try {
       const userId = req.user?.id;
       if (!userId) { sendError(res, 401, 'Không tìm thấy thông tin xác thực người dùng.'); return; }
@@ -647,45 +693,72 @@ export class AIController {
       if (!prompt) { sendError(res, 400, 'Cần cung cấp prompt mô tả model.'); return; }
 
       const files = (req as any).files as Record<string, Express.Multer.File[]> | undefined;
-      const refFile = files?.['imageReference']?.[0];
-      const imageReference = refFile
-        ? `data:${refFile.mimetype};base64,${refFile.buffer.toString('base64')}`
+      const toBase64 = (f: Express.Multer.File) => `data:${f.mimetype};base64,${f.buffer.toString('base64')}`;
+
+      const imageReference = files?.['imageReference']?.[0]
+        ? toBase64(files['imageReference'][0])
         : (req.body.imageReferenceUrl as string | undefined);
+
+      const faceReference = files?.['faceReference']?.[0]
+        ? toBase64(files['faceReference'][0])
+        : (req.body.faceReferenceUrl as string | undefined);
+
+      const faceReferenceMode: 'match_base' | 'match_reference' | undefined =
+        ['match_base', 'match_reference'].includes(req.body.faceReferenceMode)
+          ? req.body.faceReferenceMode : undefined;
 
       const aspectRatio: string | undefined = req.body.aspectRatio || undefined;
       const resolution: FashnResolution = req.body.resolution || FashnResolution.ONE_K;
-      const generationMode: FashnGenerationMode = req.body.generationMode || FashnGenerationMode.BALANCED;
-
+      const generationMode: FashnGenerationMode = req.body.generationMode || FashnGenerationMode.FAST;
       const numImages: number = Math.min(4, Math.max(1, parseInt(req.body.numImages) || 1));
       const seed: number | undefined = req.body.seed ? parseInt(req.body.seed) : undefined;
+
+      if (!VALID_RESOLUTIONS.includes(resolution)) {
+        sendError(res, 400, `resolution phải là một trong: ${VALID_RESOLUTIONS.join(', ')}.`); return;
+      }
+      if (!VALID_GEN_MODES.includes(generationMode)) {
+        sendError(res, 400, `generationMode phải là một trong: ${VALID_GEN_MODES.join(', ')}.`); return;
+      }
+
+      const cost = computeVariableCreditCost(generationMode, resolution, numImages, !!faceReference);
 
       const creditCheck = await CreditService.checkCredit(userId, cost);
       if (!creditCheck.ok) { sendError(res, 402, `Credit không đủ. Cần ${cost}, hiện có ${creditCheck.userCredit}.`); return; }
 
-      const job = await CreditService.createAIJob({ userId, type: AIJobType.MODEL_CREATE, prompt, creditCost: cost, provider: AIProvider.FASHN, inputParams: { resolution, generationMode, aspectRatio, numImages } });
-      res.status(202).json({ success: true, message: 'Đang xử lý...', data: { jobId: job.jobId, status: 'processing' } });
+      const job = await CreditService.createAIJob({
+        userId, type: AIJobType.MODEL_CREATE, prompt,
+        creditCost: cost, provider: AIProvider.FASHN,
+        inputParams: { resolution, generationMode, aspectRatio, numImages, hasFaceRef: !!faceReference },
+      });
+      res.status(202).json({ success: true, message: 'Đang xử lý...', data: { jobId: job.jobId, status: 'processing', cost } });
 
       scheduleJob({
         userId, jobId: job.jobId, cost,
         description: `Create model: ${prompt.slice(0, 60)}`,
-        filePrefix: 'model_create', modelName: 'model-create',
+        filePrefix: 'model_create',
+        modelName: 'model-create',
         inputs: {
           prompt,
-          ...(imageReference && { image_reference: imageReference }),
-          ...(aspectRatio    && { aspect_ratio:    aspectRatio }),
-          resolution, generation_mode: generationMode,
+          ...(imageReference    && { image_reference:    imageReference }),
+          ...(faceReference     && { face_reference:     faceReference }),
+          ...(faceReferenceMode && { face_reference_mode: faceReferenceMode }),
+          ...(aspectRatio       && { aspect_ratio:       aspectRatio }),
+          resolution,
+          generation_mode: generationMode,
           num_images: numImages,
           ...(seed !== undefined && { seed }),
         },
-        pollingFallback: () => fashnService.modelCreate({ prompt, imageReference, aspectRatio, resolution, generationMode, numImages, seed }),
+        pollingFallback: () => fashnService.modelCreate({ prompt, imageReference, faceReference, faceReferenceMode, aspectRatio, resolution, generationMode, numImages, seed }),
       });
-    } catch (err: any) { console.error('[AIController.modelCreate]', err); sendError(res, 500, err.message); }
+    } catch (err: any) {
+      console.error('[AIController.modelCreate]', err);
+      sendError(res, 500, err.message);
+    }
   }
 
   // ── POST /api/ai/model-swap ───────────────────────────────────────────────────
 
   public async modelSwap(req: AuthRequest, res: Response): Promise<void> {
-    const cost = CREDIT_COST[AIJobType.MODEL_SWAP];
     try {
       const userId = req.user?.id;
       if (!userId) { sendError(res, 401, 'Không tìm thấy thông tin xác thực người dùng.'); return; }
@@ -704,12 +777,21 @@ export class AIController {
 
       const prompt: string | undefined = req.body.prompt?.trim() || undefined;
       const resolution: FashnResolution = req.body.resolution || FashnResolution.ONE_K;
-      const generationMode: FashnGenerationMode = req.body.generationMode || FashnGenerationMode.BALANCED;
+      const generationMode: FashnGenerationMode = req.body.generationMode || FashnGenerationMode.FAST;
       const faceReferenceMode: 'match_base' | 'match_reference' | undefined =
         ['match_base', 'match_reference'].includes(req.body.faceReferenceMode)
           ? req.body.faceReferenceMode : undefined;
       const seed: number | undefined = req.body.seed ? parseInt(req.body.seed) : undefined;
       const numImages: number = Math.min(4, Math.max(1, parseInt(req.body.numImages) || 1));
+
+      if (!VALID_RESOLUTIONS.includes(resolution)) {
+        sendError(res, 400, `resolution phải là một trong: ${VALID_RESOLUTIONS.join(', ')}.`); return;
+      }
+      if (!VALID_GEN_MODES.includes(generationMode)) {
+        sendError(res, 400, `generationMode phải là một trong: ${VALID_GEN_MODES.join(', ')}.`); return;
+      }
+
+      const cost = computeVariableCreditCost(generationMode, resolution, numImages, !!faceReference);
 
       const creditCheck = await CreditService.checkCredit(userId, cost);
       if (!creditCheck.ok) { sendError(res, 402, `Credit không đủ. Cần ${cost}, hiện có ${creditCheck.userCredit}.`); return; }
@@ -718,19 +800,22 @@ export class AIController {
         userId, type: AIJobType.MODEL_SWAP,
         prompt: prompt || 'Model swap',
         creditCost: cost, provider: AIProvider.FASHN,
-        inputParams: { resolution, generationMode, numImages },
+        inputParams: { resolution, generationMode, numImages, hasFaceRef: !!faceReference },
       });
-      res.status(202).json({ success: true, message: 'Đang xử lý...', data: { jobId: job.jobId, status: 'processing' } });
+      res.status(202).json({ success: true, message: 'Đang xử lý...', data: { jobId: job.jobId, status: 'processing', cost } });
 
       scheduleJob({
         userId, jobId: job.jobId, cost,
-        description: 'Model swap', filePrefix: 'model_swap', modelName: 'model-swap',
+        description: 'Model swap',
+        filePrefix: 'model_swap',
+        modelName: 'model-swap',
         inputs: {
           model_image: modelImage,
           ...(prompt            && { prompt }),
           ...(faceReference     && { face_reference:      faceReference }),
           ...(faceReferenceMode && { face_reference_mode: faceReferenceMode }),
-          resolution, generation_mode: generationMode,
+          resolution,
+          generation_mode: generationMode,
           ...(seed !== undefined && { seed }),
           num_images: numImages,
         },
@@ -739,36 +824,72 @@ export class AIController {
           resolution, generationMode, seed, numImages,
         }),
       });
-    } catch (err: any) { console.error('[AIController.modelSwap]', err); sendError(res, 500, err.message); }
+    } catch (err: any) {
+      console.error('[AIController.modelSwap]', err);
+      sendError(res, 500, err.message);
+    }
   }
 
   // ── POST /api/ai/image-to-video ───────────────────────────────────────────────
 
   public async imageToVideo(req: AuthRequest, res: Response): Promise<void> {
-    const cost = CREDIT_COST[AIJobType.IMAGE_TO_VIDEO];
     try {
       const userId = req.user?.id;
       if (!userId) { sendError(res, 401, 'Không tìm thấy thông tin xác thực người dùng.'); return; }
 
       const files = (req as any).files as Record<string, Express.Multer.File[]> | undefined;
+      const toBase64 = (f: Express.Multer.File) => `data:${f.mimetype};base64,${f.buffer.toString('base64')}`;
+
       const imageFile = files?.['image']?.[0];
       const image = imageFile
-        ? `data:${imageFile.mimetype};base64,${imageFile.buffer.toString('base64')}`
+        ? toBase64(imageFile)
         : (req.body.imageUrl as string | undefined);
       if (!image) { sendError(res, 400, 'Cần cung cấp image hoặc imageUrl.'); return; }
 
       const prompt: string | undefined = req.body.prompt?.trim() || undefined;
       const duration: 5 | 10 = Number(req.body.duration) === 10 ? 10 : 5;
-      const resolution: string = req.body.resolution || '720p';
+      const resolution: '480p' | '720p' | '1080p' = VALID_VIDEO_RESOLUTIONS.includes(req.body.resolution)
+        ? req.body.resolution
+        : '1080p';
+
+      // end_image chỉ hợp lệ với resolution = "1080p"
+      const endImageFile = files?.['endImage']?.[0];
+      const endImage = resolution === '1080p'
+        ? (endImageFile ? toBase64(endImageFile) : (req.body.endImageUrl as string | undefined))
+        : undefined;
+
+      const cost = computeVideoCredits(duration, resolution);
 
       const creditCheck = await CreditService.checkCredit(userId, cost);
       if (!creditCheck.ok) { sendError(res, 402, `Credit không đủ. Cần ${cost}, hiện có ${creditCheck.userCredit}.`); return; }
 
-      const job = await CreditService.createAIJob({ userId, type: AIJobType.IMAGE_TO_VIDEO, prompt: prompt || 'Image to video', creditCost: cost, provider: AIProvider.FASHN, inputParams: { duration, resolution } });
-      res.status(202).json({ success: true, message: 'Đang xử lý...', data: { jobId: job.jobId, status: 'processing' } });
+      const job = await CreditService.createAIJob({
+        userId, type: AIJobType.IMAGE_TO_VIDEO,
+        prompt: prompt || 'Image to video',
+        creditCost: cost, provider: AIProvider.FASHN,
+        inputParams: { duration, resolution, hasEndImage: !!endImage },
+      });
+      res.status(202).json({ success: true, message: 'Đang xử lý...', data: { jobId: job.jobId, status: 'processing', cost } });
 
-      scheduleJob({ userId, jobId: job.jobId, cost, description: 'Image to video', filePrefix: 'video', isVideo: true, modelName: 'image-to-video', inputs: { image, prompt, duration, resolution }, pollingFallback: () => fashnService.imageToVideo({ image: image!, prompt, duration, resolution }) });
-    } catch (err: any) { console.error('[AIController.imageToVideo]', err); sendError(res, 500, err.message); }
+      scheduleJob({
+        userId, jobId: job.jobId, cost,
+        description: `Image to video (${duration}s/${resolution})`,
+        filePrefix: 'video',
+        isVideo: true,
+        modelName: 'image-to-video',
+        inputs: {
+          image,
+          ...(prompt   && { prompt }),
+          duration,
+          resolution,
+          ...(endImage && { end_image: endImage }),
+        },
+        pollingFallback: () => fashnService.imageToVideo({ image: image!, prompt, duration, resolution, endImage }),
+      });
+    } catch (err: any) {
+      console.error('[AIController.imageToVideo]', err);
+      sendError(res, 500, err.message);
+    }
   }
 }
 
