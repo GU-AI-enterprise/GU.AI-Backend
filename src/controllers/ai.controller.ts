@@ -279,6 +279,7 @@ export class AIController {
       const resolution: FashnResolution = req.body.resolution || FashnResolution.ONE_K;
       const generationMode: 'balanced' | 'quality' = req.body.generationMode || 'balanced';
       const numImages = Math.min(4, Math.max(1, parseInt(req.body.numImages) || 1));
+      const prompt: string | undefined = req.body.prompt?.trim() || undefined;
 
       if (!VALID_RESOLUTIONS.includes(resolution)) {
         sendError(res, 400, `resolution phải là một trong: ${VALID_RESOLUTIONS.join(', ')}.`); return;
@@ -314,11 +315,18 @@ export class AIController {
 
       res.status(202).json({ success: true, message: 'Đang xử lý...', data: { jobId: job.jobId, status: 'processing' } });
 
+      AdminEventService.emit({
+        type: 'job_created',
+        message: `Bắt đầu: Virtual try-on Max (${resolution})`,
+        userId,
+        metadata: { jobId: job.jobId },
+      });
+
       setImmediate(() => runInBackground({
         userId, jobId: job.jobId, cost,
         description: `Virtual try-on Max (${resolution})`,
         filePrefix: 'tryon_max',
-        fashnCall: () => fashnService.tryOnMax({ productImage: productImage!, modelImage: modelImage!, resolution, generationMode, numImages }),
+        fashnCall: () => fashnService.tryOnMax({ productImage: productImage!, modelImage: modelImage!, resolution, generationMode, numImages, prompt }),
       }));
     } catch (err: any) {
       console.error('[AIController.tryOnMax]', err);

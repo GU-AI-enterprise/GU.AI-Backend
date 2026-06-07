@@ -38,6 +38,7 @@ export interface TryOnMaxOptions {
   resolution?: FashnResolution;
   generationMode?: 'balanced' | 'quality';
   numImages?: number;
+  prompt?: string;
 }
 
 export interface ProductToModelOptions {
@@ -244,6 +245,7 @@ class FashnService {
     if (options.resolution)    inputs.resolution      = options.resolution;
     if (options.generationMode)inputs.generation_mode = options.generationMode;
     if (options.numImages)     inputs.num_images      = options.numImages;
+    if (options.prompt)        inputs.prompt          = options.prompt;
 
     const { id, fashnCreditsUsed } = await this.run('tryon-max', inputs);
     const outputUrl = await this.pollUntilDone(id);

@@ -111,7 +111,7 @@ export class AdminController {
 
       const { data: job, error } = await supabaseAdmin
         .from('ai_jobs')
-        .select('id, type, status, credit_cost, input_params, error_message, created_at, started_at, completed_at, provider, user_id')
+        .select('id, type, status, credit_cost, input_params, prompt, error_message, created_at, started_at, completed_at, provider, user_id')
         .eq('id', id)
         .single();
 
