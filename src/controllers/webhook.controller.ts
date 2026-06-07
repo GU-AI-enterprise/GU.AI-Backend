@@ -163,12 +163,25 @@ export class WebhookController {
       // Get package credit info
       const { data: pkg } = await supabaseAdmin!
         .from('credit_packages')
-        .select('name, credit_amount, bonus_credit')
+        .select('name, credit_amount, bonus_credit, grants_plan_type')
         .eq('id', tx.package_id)
         .single();
 
       const totalCredits = (pkg?.credit_amount ?? 0) + (pkg?.bonus_credit ?? 0);
       const packageName = pkg?.name ?? 'Credit Package';
+
+      // Upgrade plan_type if package grants one (never downgrade)
+      if (pkg?.grants_plan_type) {
+        const PLAN_ORDER = ['free', 'basic', 'pro', 'agency'];
+        const { data: userRow } = await supabaseAdmin!.from('users').select('plan_type').eq('id', tx.user_id).single();
+        const currentIdx = PLAN_ORDER.indexOf(userRow?.plan_type ?? 'free');
+        const newIdx     = PLAN_ORDER.indexOf(pkg.grants_plan_type);
+        if (newIdx > currentIdx) {
+          await supabaseAdmin!.from('users')
+            .update({ plan_type: pkg.grants_plan_type, updated_at: new Date().toISOString() })
+            .eq('id', tx.user_id);
+        }
+      }
 
       // The DB trigger (trg_transactions_before_insert_update → create_ledger_for_success_transaction)
       // already inserted credit_ledger and incremented users.current_credit via apply_credit_ledger.

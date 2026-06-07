@@ -1,9 +1,11 @@
--- Seed 3 test credit packages (10,000 VND / 50 credits each)
--- Run this in Supabase SQL Editor to set up test packages
+-- Credit packages — run in Supabase SQL Editor
+-- Clears old test data and inserts production packages
 
-INSERT INTO public.credit_packages (name, price, credit_amount, bonus_credit, is_active, sort_order)
+DELETE FROM public.credit_packages WHERE sort_order IN (1, 2, 3);
+
+INSERT INTO public.credit_packages (name, price, credit_amount, bonus_credit, is_active, sort_order, grants_plan_type)
 VALUES
-  ('Gói Starter',  10000, 50, 0, true, 1),
-  ('Gói Creator',  10000, 50, 0, true, 2),
-  ('Gói Pro',      10000, 50, 0, true, 3)
+  ('Starter',            261000,  100, 0, true, 1, 'basic'),
+  ('Gói Cơ Bản',        489000,  199, 0, true, 2, 'pro'),
+  ('Gói Chuyên Nghiệp', 1100000, 499, 0, true, 3, 'agency')
 ON CONFLICT DO NOTHING;

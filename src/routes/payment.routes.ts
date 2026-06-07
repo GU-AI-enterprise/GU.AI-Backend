@@ -10,6 +10,10 @@ router.get('/packages', paymentController.getPackages.bind(paymentController));
 // Create PayOS payment link
 router.post('/create', requireAuth, paymentController.createPaymentLink.bind(paymentController));
 
+// Top-up pay-as-you-go
+router.get('/topup-info', requireAuth, paymentController.getTopupInfo.bind(paymentController));
+router.post('/topup', requireAuth, paymentController.createTopupPayment.bind(paymentController));
+
 // Get payment status by orderCode
 router.get('/:orderCode', requireAuth, paymentController.getPaymentInfo.bind(paymentController));
 
