@@ -1,6 +1,6 @@
 import { Request, Response } from 'express';
 import { CreditService } from '../services/credit.service';
-import { StorageService, StorageBucket } from '../services/storage.service';
+import { StorageService } from '../services/storage.service';
 import { SocketService } from '../services/socket.service';
 import { AdminEventService } from '../services/adminEvent.service';
 import { PayOSService } from '../services/payos.service';
@@ -71,17 +71,22 @@ export class WebhookController {
       const outputUrl = payload.output[0];
       const isVideo = context.isVideo ?? false;
 
-      const ext    = isVideo ? 'mp4'       : 'png';
-      const mime   = isVideo ? 'video/mp4' : 'image/png';
-      const bucket: StorageBucket = isVideo ? 'videos' : 'assets';
-      const aType  = isVideo ? AssetType.VIDEO : AssetType.IMAGE;
+      const ext  = isVideo ? 'mp4'       : 'png';
+      const mime = isVideo ? 'video/mp4' : 'image/png';
+      const aType = isVideo ? AssetType.VIDEO : AssetType.IMAGE;
 
       const fileName = `${filePrefix}_${Date.now()}.${ext}`;
 
-      const dlRes = await fetch(outputUrl);
-      if (!dlRes.ok) throw new Error('Không tải được output từ Fashn (webhook).');
-      const buffer = Buffer.from(await dlRes.arrayBuffer());
-      const publicUrl = await StorageService.uploadBuffer(buffer, fileName, mime, userId, bucket);
+      // For videos, use the provider URL directly instead of re-uploading to Supabase
+      let publicUrl: string;
+      if (isVideo) {
+        publicUrl = outputUrl;
+      } else {
+        const dlRes = await fetch(outputUrl);
+        if (!dlRes.ok) throw new Error('Không tải được output từ Fashn (webhook).');
+        const buffer = Buffer.from(await dlRes.arrayBuffer());
+        publicUrl = await StorageService.uploadBuffer(buffer, fileName, mime, userId, 'assets');
+      }
 
       const asset = await CreditService.saveOutputAsset({
         userId,

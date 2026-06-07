@@ -97,6 +97,8 @@ export class CreditService {
     credit_cost: number;
     completed_at: string | null;
     error_message: string | null;
+    outputUrl: string | null;
+    outputAssetId: string | null;
   } | null> {
     const client = this.getClient();
     const { data, error } = await client
@@ -105,7 +107,20 @@ export class CreditService {
       .eq('id', jobId)
       .single();
     if (error || !data) return null;
-    return data;
+
+    const { data: outputAsset } = await client
+      .from('ai_job_assets')
+      .select('asset_id, assets(url)')
+      .eq('job_id', jobId)
+      .eq('role', 'output')
+      .limit(1)
+      .maybeSingle();
+
+    return {
+      ...data,
+      outputUrl: (outputAsset?.assets as any)?.url ?? null,
+      outputAssetId: outputAsset?.asset_id ?? null,
+    };
   }
 
   /**

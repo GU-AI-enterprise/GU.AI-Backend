@@ -45,32 +45,31 @@ export class ImageService {
     return data;
   }
 
-  // 2. Lấy ảnh active (tuỳ chọn lọc theo category)
-  public static async getUserImages(userId: string, category?: string) {
+  // 2. Lấy assets active (ảnh + video, tuỳ chọn lọc theo category hoặc type)
+  public static async getUserImages(userId: string, category?: string, type?: string) {
     const client = this.getClient();
     let query = client
       .from('assets')
       .select('*')
       .eq('user_id', userId)
-      .eq('type', 'image')
       .eq('status', 'active');
     if (category) query = query.eq('category', category);
+    if (type) query = query.eq('type', type);
     const { data, error } = await query.order('created_at', { ascending: false });
-    if (error) throw new Error(`Lỗi khi lấy danh sách ảnh: ${error.message}`);
+    if (error) throw new Error(`Lỗi khi lấy danh sách assets: ${error.message}`);
     return data;
   }
 
-  // 3. Lấy ảnh trong Archive
+  // 3. Lấy assets trong Archive (ảnh + video)
   public static async getArchivedImages(userId: string) {
     const client = this.getClient();
     const { data, error } = await client
       .from('assets')
       .select('*')
       .eq('user_id', userId)
-      .eq('type', 'image')
       .eq('status', 'archived')
       .order('archived_at', { ascending: false });
-    if (error) throw new Error(`Lỗi khi lấy danh sách ảnh archive: ${error.message}`);
+    if (error) throw new Error(`Lỗi khi lấy danh sách assets archive: ${error.message}`);
     return data;
   }
 

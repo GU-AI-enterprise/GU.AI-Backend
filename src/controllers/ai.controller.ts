@@ -67,11 +67,14 @@ async function runInBackground(params: {
 
     const ext    = isVideo ? 'mp4'       : 'png';
     const mime   = isVideo ? 'video/mp4' : 'image/png';
-    const bucket: StorageBucket = isVideo ? 'videos' : 'assets';
     const aType  = isVideo ? AssetType.VIDEO : AssetType.IMAGE;
 
-    const fileName  = `${filePrefix}_${Date.now()}.${ext}`;
-    const publicUrl = await downloadAndUpload(result.outputUrl, fileName, userId, mime, bucket);
+    const fileName = `${filePrefix}_${Date.now()}.${ext}`;
+
+    // For videos, use the provider URL directly instead of re-uploading to Supabase
+    const publicUrl = isVideo
+      ? result.outputUrl
+      : await downloadAndUpload(result.outputUrl, fileName, userId, mime, 'assets');
 
     const asset = await CreditService.saveOutputAsset({
       userId,
@@ -202,7 +205,7 @@ export class AIController {
       const job = await CreditService.getJobById(jobId);
       if (!job) { sendError(res, 404, 'Không tìm thấy job.'); return; }
 
-      sendSuccess(res, { data: { jobId: job.id, status: job.status, type: job.type, creditsUsed: job.credit_cost, error: job.error_message } });
+      sendSuccess(res, { data: { jobId: job.id, status: job.status, type: job.type, creditsUsed: job.credit_cost, error: job.error_message, imageUrl: job.outputUrl ?? undefined, assetId: job.outputAssetId ?? undefined } });
     } catch (err: any) {
       sendError(res, 500, err.message);
     }

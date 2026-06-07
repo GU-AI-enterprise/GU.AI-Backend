@@ -9,7 +9,8 @@ export class ImageController {
       const userId = req.user?.id;
       if (!userId) { sendError(res, 401, 'Không tìm thấy thông tin xác thực người dùng.'); return; }
       const category = req.query.category as string | undefined;
-      sendSuccess(res, { message: 'Lấy danh sách ảnh thành công.', data: await ImageService.getUserImages(userId, category) });
+      const type = req.query.type as string | undefined;
+      sendSuccess(res, { message: 'Lấy danh sách assets thành công.', data: await ImageService.getUserImages(userId, category, type) });
     } catch (err: any) { sendError(res, 500, err.message); }
   }
 
