@@ -1,6 +1,6 @@
 import { supabaseAdmin } from '../config/supabase';
 
-export type StorageBucket = 'assets' | 'videos';
+export type StorageBucket = 'assets' | 'videos' | 'models';
 
 export class StorageService {
   private static getClient() {

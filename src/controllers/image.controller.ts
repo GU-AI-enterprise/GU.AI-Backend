@@ -1,6 +1,7 @@
 import { Response } from 'express';
 import { AuthRequest } from '../middlewares/auth.middleware';
 import { ImageService } from '../services/image.service';
+import { StorageService } from '../services/storage.service';
 import { sendSuccess, sendError } from '../utils/response';
 
 export class ImageController {
@@ -86,6 +87,34 @@ export class ImageController {
   // DELETE /:id — backward-compat: chuyển vào Archive (soft delete)
   public async deleteImage(req: AuthRequest, res: Response): Promise<void> {
     return this.archiveImage(req, res);
+  }
+
+  // POST /upload — upload file lên Supabase Storage (bypass RLS qua supabaseAdmin)
+  public async uploadFile(req: AuthRequest, res: Response): Promise<void> {
+    try {
+      const userId = req.user?.id;
+      if (!userId) { sendError(res, 401, 'Không tìm thấy thông tin xác thực người dùng.'); return; }
+
+      const file = (req as any).file as Express.Multer.File | undefined;
+      if (!file) { sendError(res, 400, 'Cần cung cấp file.'); return; }
+
+      const bucket = (req.query.bucket as string) || 'assets';
+      if (!['assets', 'videos', 'models'].includes(bucket)) {
+        sendError(res, 400, 'bucket không hợp lệ.'); return;
+      }
+
+      const publicUrl = await StorageService.uploadBuffer(
+        file.buffer,
+        file.originalname,
+        file.mimetype,
+        userId,
+        bucket as any,
+      );
+
+      sendSuccess(res, { message: 'Upload thành công.', data: { url: publicUrl } });
+    } catch (err: any) {
+      sendError(res, 500, err.message);
+    }
   }
 }
 

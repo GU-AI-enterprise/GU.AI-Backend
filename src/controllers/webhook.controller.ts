@@ -77,16 +77,10 @@ export class WebhookController {
 
       const fileName = `${filePrefix}_${Date.now()}.${ext}`;
 
-      // For videos, use the provider URL directly instead of re-uploading to Supabase
-      let publicUrl: string;
-      if (isVideo) {
-        publicUrl = outputUrl;
-      } else {
-        const dlRes = await fetch(outputUrl);
-        if (!dlRes.ok) throw new Error('Không tải được output từ Fashn (webhook).');
-        const buffer = Buffer.from(await dlRes.arrayBuffer());
-        publicUrl = await StorageService.uploadBuffer(buffer, fileName, mime, userId, 'assets');
-      }
+      const dlRes = await fetch(outputUrl);
+      if (!dlRes.ok) throw new Error('Không tải được output từ Fashn (webhook).');
+      const buffer = Buffer.from(await dlRes.arrayBuffer());
+      const publicUrl = await StorageService.uploadBuffer(buffer, fileName, mime, userId, isVideo ? 'videos' : 'assets');
 
       const asset = await CreditService.saveOutputAsset({
         userId,

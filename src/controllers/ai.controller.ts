@@ -71,10 +71,7 @@ async function runInBackground(params: {
 
     const fileName = `${filePrefix}_${Date.now()}.${ext}`;
 
-    // For videos, use the provider URL directly instead of re-uploading to Supabase
-    const publicUrl = isVideo
-      ? result.outputUrl
-      : await downloadAndUpload(result.outputUrl, fileName, userId, mime, 'assets');
+    const publicUrl = await downloadAndUpload(result.outputUrl, fileName, userId, mime, isVideo ? 'videos' : 'assets');
 
     const asset = await CreditService.saveOutputAsset({
       userId,

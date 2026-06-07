@@ -1,6 +1,9 @@
 import { Router } from 'express';
+import multer from 'multer';
 import { imageController } from '../controllers/image.controller';
 import { requireAuth } from '../middlewares/auth.middleware';
+
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 } });
 
 const router = Router();
 
@@ -14,6 +17,7 @@ router.post('/bulk-archive', imageController.bulkArchive.bind(imageController));
 // ── Base CRUD ─────────────────────────────────────────────────────────────────
 router.get('/',  imageController.getImages.bind(imageController));
 router.post('/', imageController.createImage.bind(imageController));
+router.post('/upload', upload.single('file'), imageController.uploadFile.bind(imageController));
 
 // ── Single-item actions ───────────────────────────────────────────────────────
 router.patch('/:id/archive',   imageController.archiveImage.bind(imageController));
