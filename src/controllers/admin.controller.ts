@@ -320,4 +320,252 @@ export class AdminController {
       sendError(res, 500, err.message);
     }
   }
+
+  public async getJobAnalytics(req: AuthRequest, res: Response): Promise<void> {
+    try {
+      if (!supabaseAdmin) { sendError(res, 500, 'Service role not configured'); return; }
+      const range = (req.query.range as string) || '7d';
+      const { currentStart, previousStart, groupFormat } = getDateRanges(range);
+
+      const { data, error } = await supabaseAdmin
+        .from('ai_jobs')
+        .select('created_at, status')
+        .gte('created_at', previousStart.toISOString());
+
+      if (error) { sendError(res, 500, error.message); return; }
+
+      const groupMap = buildGroupMap(groupFormat, range, { success: 0, failed: 0 });
+      let currentTotal = 0;
+      let previousTotal = 0;
+
+      (data || []).forEach((job) => {
+        const dateObj = new Date(job.created_at);
+        if (dateObj >= currentStart) {
+          currentTotal++;
+          const key = getGroupKey(job.created_at, groupFormat);
+          if (groupMap[key]) {
+            if (job.status === 'completed') groupMap[key].success++;
+            else if (job.status === 'failed') groupMap[key].failed++;
+          }
+        } else if (dateObj >= previousStart && dateObj < currentStart) {
+          previousTotal++;
+        }
+      });
+
+      sendSuccess(res, {
+        data: {
+          currentTotal,
+          previousTotal,
+          percentChange: calculateGrowth(currentTotal, previousTotal),
+          chartData: Object.values(groupMap)
+        }
+      });
+    } catch (err: any) {
+      sendError(res, 500, err.message);
+    }
+  }
+
+  public async getRevenueAnalytics(req: AuthRequest, res: Response): Promise<void> {
+    try {
+      if (!supabaseAdmin) { sendError(res, 500, 'Service role not configured'); return; }
+      const range = (req.query.range as string) || '7d';
+      const { currentStart, previousStart, groupFormat } = getDateRanges(range);
+
+      const { data, error } = await supabaseAdmin
+        .from('transactions')
+        .select('created_at, amount')
+        .eq('status', 'success')
+        .gte('created_at', previousStart.toISOString());
+
+      if (error) { sendError(res, 500, error.message); return; }
+
+      const groupMap = buildGroupMap(groupFormat, range, { revenue: 0 });
+      let currentTotal = 0;
+      let previousTotal = 0;
+
+      (data || []).forEach((tx) => {
+        const dateObj = new Date(tx.created_at);
+        const amount = Number(tx.amount) || 0;
+        if (dateObj >= currentStart) {
+          currentTotal += amount;
+          const key = getGroupKey(tx.created_at, groupFormat);
+          if (groupMap[key]) groupMap[key].revenue += amount;
+        } else if (dateObj >= previousStart && dateObj < currentStart) {
+          previousTotal += amount;
+        }
+      });
+
+      sendSuccess(res, {
+        data: {
+          currentTotal,
+          previousTotal,
+          percentChange: calculateGrowth(currentTotal, previousTotal),
+          chartData: Object.values(groupMap)
+        }
+      });
+    } catch (err: any) {
+      sendError(res, 500, err.message);
+    }
+  }
+
+  public async getUserAnalytics(req: AuthRequest, res: Response): Promise<void> {
+    try {
+      if (!supabaseAdmin) { sendError(res, 500, 'Service role not configured'); return; }
+      const range = (req.query.range as string) || '7d';
+      const { currentStart, previousStart, groupFormat } = getDateRanges(range);
+
+      const { data, error } = await supabaseAdmin
+        .from('users')
+        .select('created_at')
+        .gte('created_at', previousStart.toISOString());
+
+      if (error) { sendError(res, 500, error.message); return; }
+
+      const groupMap = buildGroupMap(groupFormat, range, { users: 0 });
+      let currentTotal = 0;
+      let previousTotal = 0;
+
+      (data || []).forEach((user) => {
+        const dateObj = new Date(user.created_at);
+        if (dateObj >= currentStart) {
+          currentTotal++;
+          const key = getGroupKey(user.created_at, groupFormat);
+          if (groupMap[key]) groupMap[key].users++;
+        } else if (dateObj >= previousStart && dateObj < currentStart) {
+          previousTotal++;
+        }
+      });
+
+      sendSuccess(res, {
+        data: {
+          currentTotal,
+          previousTotal,
+          percentChange: calculateGrowth(currentTotal, previousTotal),
+          chartData: Object.values(groupMap)
+        }
+      });
+    } catch (err: any) {
+      sendError(res, 500, err.message);
+    }
+  }
+
+  public async getCreditAnalytics(req: AuthRequest, res: Response): Promise<void> {
+    try {
+      if (!supabaseAdmin) { sendError(res, 500, 'Service role not configured'); return; }
+      const range = (req.query.range as string) || '7d';
+      const { currentStart, previousStart, groupFormat } = getDateRanges(range);
+
+      const { data, error } = await supabaseAdmin
+        .from('ai_jobs')
+        .select('created_at, credit_cost')
+        .eq('status', 'completed')
+        .gte('created_at', previousStart.toISOString());
+
+      if (error) { sendError(res, 500, error.message); return; }
+
+      const groupMap = buildGroupMap(groupFormat, range, { credits: 0 });
+      let currentTotal = 0;
+      let previousTotal = 0;
+
+      (data || []).forEach((job) => {
+        const dateObj = new Date(job.created_at);
+        const cost = Number(job.credit_cost) || 0;
+        if (dateObj >= currentStart) {
+          currentTotal += cost;
+          const key = getGroupKey(job.created_at, groupFormat);
+          if (groupMap[key]) groupMap[key].credits += cost;
+        } else if (dateObj >= previousStart && dateObj < currentStart) {
+          previousTotal += cost;
+        }
+      });
+
+      sendSuccess(res, {
+        data: {
+          currentTotal,
+          previousTotal,
+          percentChange: calculateGrowth(currentTotal, previousTotal),
+          chartData: Object.values(groupMap)
+        }
+      });
+    } catch (err: any) {
+      sendError(res, 500, err.message);
+    }
+  }
 }
+
+// ── Helpers cho Analytics ───────────────────────────────────────────────────
+
+const getDateRanges = (range: string) => {
+  const currentStart = new Date();
+  const previousStart = new Date();
+  let groupFormat = 'day';
+
+  if (range === 'today') {
+    currentStart.setHours(0, 0, 0, 0);
+    previousStart.setDate(previousStart.getDate() - 1);
+    previousStart.setHours(0, 0, 0, 0);
+    groupFormat = 'hour';
+  } else if (range === '30d') {
+    currentStart.setDate(currentStart.getDate() - 30 + 1);
+    currentStart.setHours(0, 0, 0, 0);
+    previousStart.setDate(previousStart.getDate() - 60 + 1);
+    previousStart.setHours(0, 0, 0, 0);
+  } else if (range === '1y') {
+    currentStart.setFullYear(currentStart.getFullYear() - 1);
+    currentStart.setDate(1);
+    currentStart.setHours(0, 0, 0, 0);
+    previousStart.setFullYear(previousStart.getFullYear() - 2);
+    previousStart.setDate(1);
+    previousStart.setHours(0, 0, 0, 0);
+    groupFormat = 'month';
+  } else {
+    // 7d default
+    currentStart.setDate(currentStart.getDate() - 7 + 1);
+    currentStart.setHours(0, 0, 0, 0);
+    previousStart.setDate(previousStart.getDate() - 14 + 1);
+    previousStart.setHours(0, 0, 0, 0);
+  }
+  return { currentStart, previousStart, groupFormat };
+};
+
+const calculateGrowth = (current: number, previous: number) => {
+  if (previous === 0) return current > 0 ? 100 : 0;
+  return Number((((current - previous) / previous) * 100).toFixed(1));
+};
+
+const buildGroupMap = (groupFormat: string, range: string, defaultProps: Record<string, number>) => {
+  const groupMap: Record<string, any> = {};
+  if (groupFormat === 'hour') {
+    for (let i = 0; i < 24; i++) {
+      const dStr = i.toString().padStart(2, '0') + ':00';
+      groupMap[dStr] = { date: dStr, ...defaultProps };
+    }
+  } else if (groupFormat === 'month') {
+    for (let i = 11; i >= 0; i--) {
+      const d = new Date();
+      d.setMonth(d.getMonth() - i);
+      const dStr = `${d.getFullYear()}-${(d.getMonth() + 1).toString().padStart(2, '0')}`;
+      groupMap[dStr] = { date: dStr, ...defaultProps };
+    }
+  } else {
+    const days = range === '30d' ? 30 : 7;
+    for (let i = days - 1; i >= 0; i--) {
+      const d = new Date();
+      d.setDate(d.getDate() - i);
+      const dStr = d.toISOString().slice(0, 10);
+      groupMap[dStr] = { date: dStr, ...defaultProps };
+    }
+  }
+  return groupMap;
+};
+
+const getGroupKey = (dateStr: string, groupFormat: string) => {
+  const dateObj = new Date(dateStr);
+  if (groupFormat === 'hour') {
+    return dateObj.getHours().toString().padStart(2, '0') + ':00';
+  } else if (groupFormat === 'month') {
+    return `${dateObj.getFullYear()}-${(dateObj.getMonth() + 1).toString().padStart(2, '0')}`;
+  } else {
+    return dateObj.toISOString().slice(0, 10);
+  }
+};

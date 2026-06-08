@@ -93,6 +93,10 @@ router.get('/events', requireStaff, async (req, res) => {
  *               $ref: '#/components/schemas/ErrorResponse'
  */
 router.get('/stats', requireStaff, ctrl.getStats.bind(ctrl));
+router.get('/reports/jobs', requireStaff, ctrl.getJobAnalytics.bind(ctrl));
+router.get('/reports/revenue', requireStaff, ctrl.getRevenueAnalytics.bind(ctrl));
+router.get('/reports/users', requireStaff, ctrl.getUserAnalytics.bind(ctrl));
+router.get('/reports/credits', requireStaff, ctrl.getCreditAnalytics.bind(ctrl));
 
 /**
  * @openapi
