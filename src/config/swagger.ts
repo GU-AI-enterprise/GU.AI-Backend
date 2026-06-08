@@ -16,6 +16,10 @@ const options = {
     },
     servers: [
       {
+        url: 'https://api.guai.com.vn',
+        description: 'Production Server',
+      },
+      {
         url: 'http://localhost:5000',
         description: 'Development Server',
       },
