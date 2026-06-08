@@ -37,7 +37,10 @@ app.use(morgan('dev', {
 // CORS config – CLIENT_URL có thể là danh sách cách nhau bởi dấu phẩy
 // Ví dụ: https://guai.vercel.app,https://www.guai.app
 const allowedOrigins: string[] = (
-  process.env.CLIENT_URL || 'http://localhost:3000'
+  process.env.CLIENT_URL || 'http://localhost:3000',
+  "https://guai.com.vn",
+  "https://www.guai.com.vn",
+  "https://admin.guai.com.vn"
 )
   .split(',')
   .map((s) => s.trim().replace(/\/$/, '')) // Loại bỏ dấu slash / ở cuối nếu có
@@ -48,11 +51,11 @@ app.use(
     origin: (origin, callback) => {
       // Chuẩn hóa origin đầu vào (loại bỏ slash cuối)
       const cleanOrigin = origin ? origin.trim().replace(/\/$/, '') : '';
-      
+
       // Cho phép server-to-server (không có origin), localhost trong môi trường dev, hoặc origin nằm trong whitelist
       if (
-        !origin || 
-        process.env.NODE_ENV !== 'production' || 
+        !origin ||
+        process.env.NODE_ENV !== 'production' ||
         allowedOrigins.includes(cleanOrigin) ||
         allowedOrigins.some(allowed => cleanOrigin.startsWith(allowed))
       ) {
@@ -75,17 +78,17 @@ setupSwagger(app);
 app.use(globalLimiter);
 
 // Routes
-app.use('/api/auth',    authLimiter,    authRoutes);
-app.use('/api/images',                  imageRoutes);
-app.use('/api/collections',             collectionRoutes);
-app.use('/api/history',                 historyRoutes);
-app.use('/api/users',                   userRoutes);
-app.use('/api/ai',      aiRoutes);
+app.use('/api/auth', authLimiter, authRoutes);
+app.use('/api/images', imageRoutes);
+app.use('/api/collections', collectionRoutes);
+app.use('/api/history', historyRoutes);
+app.use('/api/users', userRoutes);
+app.use('/api/ai', aiRoutes);
 app.use('/api/support', supportRoutes);
-app.use('/api/admin',                   adminRoutes);
-app.use('/api/notifications',           notificationRoutes);
-app.use('/api/webhooks',                webhookRoutes);
-app.use('/api/payments',                paymentRoutes);
+app.use('/api/admin', adminRoutes);
+app.use('/api/notifications', notificationRoutes);
+app.use('/api/webhooks', webhookRoutes);
+app.use('/api/payments', paymentRoutes);
 
 // Health Check
 app.get('/health', (req: Request, res: Response) => {
