@@ -90,6 +90,11 @@ app.use('/api/notifications', notificationRoutes);
 app.use('/api/webhooks', webhookRoutes);
 app.use('/api/payments', paymentRoutes);
 
+// Root
+app.get('/', (_req: Request, res: Response) => {
+  res.json({ message: 'Hello from GU.AI 👋', status: 'ok' });
+});
+
 // Health Check
 app.get('/health', (req: Request, res: Response) => {
   res.status(200).json({ status: 'ok', message: 'Server is running properly' });
