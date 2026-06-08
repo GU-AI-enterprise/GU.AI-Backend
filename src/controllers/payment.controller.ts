@@ -316,7 +316,8 @@ export class PaymentController {
         metadata: { transactionId: tx.id, status: 'success', paid_at: new Date().toISOString(), amount: tx.amount, credits: totalCredits },
       });
 
-      res.json({ success: true, newBalance, credits: totalCredits });
+      const { data: freshUser } = await supabaseAdmin!.from('users').select('plan_type').eq('id', userId).single();
+      res.json({ success: true, newBalance, credits: totalCredits, planType: freshUser?.plan_type ?? null });
     } catch (err: any) {
       console.error('[PaymentController] processPayment:', err.message);
       res.status(500).json({ success: false, error: err.message });
