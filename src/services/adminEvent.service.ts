@@ -104,9 +104,9 @@ export class AdminEventService {
     const limit  = params.limit  ?? 20;
     const offset = params.offset ?? 0;
 
-    // Day range in UTC
-    const dayStart = new Date(params.date + 'T00:00:00.000Z');
-    const dayEnd   = new Date(params.date + 'T23:59:59.999Z');
+    // Day range in Vietnam local time (UTC+7)
+    const dayStart = new Date(params.date + 'T00:00:00.000+07:00');
+    const dayEnd   = new Date(params.date + 'T23:59:59.999+07:00');
 
     // Paginated events
     const { data: rows, error } = await supabaseAdmin

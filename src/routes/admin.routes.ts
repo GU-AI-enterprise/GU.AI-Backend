@@ -528,11 +528,8 @@ router.get('/transactions', requireStaff, async (req, res) => {
       .order('created_at', { ascending: false });
 
     if (status !== 'all') q = q.eq('status', status);
-    if (dateFrom) q = q.gte('created_at', dateFrom);
-    if (dateTo) {
-      const end = new Date(dateTo); end.setDate(end.getDate() + 1);
-      q = q.lt('created_at', end.toISOString());
-    }
+    if (dateFrom) q = q.gte('created_at', new Date(dateFrom + 'T00:00:00.000+07:00').toISOString());
+    if (dateTo)   q = q.lte('created_at', new Date(dateTo   + 'T23:59:59.999+07:00').toISOString());
 
     const { data, error, count } = await q.range(offset, offset + limit - 1);
     if (error) throw error;
