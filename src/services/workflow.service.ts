@@ -126,13 +126,13 @@ export class WorkflowPlannerService {
     // Build explicit usage rules based on which images are present
     const imageRules: string[] = [];
     if (userInputKeys.includes('model_image')) {
-      imageRules.push('- Có "model_image": PHẢI dùng nó làm model_image input. Dùng try_on (cần thêm garment_image) hoặc try_on_max (cần thêm product_image) hoặc model_swap. KHÔNG dùng product_to_model khi đã có model_image.');
+      imageRules.push('- Có "model_image": TUYỆT ĐỐI PHẢI dùng nó làm model_image input. CHỈ ĐƯỢC dùng try_on (garment_image = sản phẩm) hoặc try_on_max (product_image = sản phẩm, model_image = người mẫu) hoặc model_swap. TUYỆT ĐỐI KHÔNG ĐƯỢC dùng product_to_model khi đã có model_image — dù prompt có nói "người mẫu AI" hay bất cứ từ nào khác.');
     }
     if (userInputKeys.includes('product_image') && !userInputKeys.includes('model_image')) {
-      imageRules.push('- Có "product_image" nhưng không có model_image: dùng product_to_model để tạo người mẫu AI từ sản phẩm, HOẶC xóa nền trước rồi product_to_model.');
+      imageRules.push('- Có "product_image" nhưng KHÔNG có model_image: dùng product_to_model (AI tự tạo người mẫu). Nếu prompt có từ "xóa nền" → BẮT BUỘC thêm bước remove_background($product_image) trước, sau đó product_to_model($step_0_output).');
     }
     if (userInputKeys.includes('product_image') && userInputKeys.includes('model_image')) {
-      imageRules.push('- Có cả product_image và model_image: dùng try_on hoặc try_on_max với product_image làm garment/product và model_image làm model.');
+      imageRules.push('- Có CẢ product_image VÀ model_image: PHẢI dùng try_on (model_image=$model_image, garment_image=$product_image) hoặc try_on_max (model_image=$model_image, product_image=$product_image). Nếu prompt có từ "xóa nền" → bước 1 là remove_background($product_image), bước 2 là try_on(model_image=$model_image, garment_image=$step_0_output).');
     }
     if (userInputKeys.includes('face_image') && !userInputKeys.includes('model_image')) {
       imageRules.push('- Có "face_image" nhưng không có model_image: dùng face_to_model để tạo model từ khuôn mặt trước.');
@@ -158,13 +158,20 @@ Output của bước N (0-based index) là "$step_N_output". Bước tiếp theo
 ## Danh sách tool cho phép
 ${JSON.stringify(toolList, null, 2)}
 
+## Phân biệt tool — ĐỌC KỸ
+- product_to_model: AI tự tạo người mẫu hoàn toàn mới. CHỈ dùng khi KHÔNG có model_image.
+- try_on: Mặc trang phục lên người mẫu thật. PHẢI có model_image + garment_image.
+- try_on_max: Try-on chất lượng cao. PHẢI có model_image + product_image.
+→ Nếu có model_image → LUÔN dùng try_on hoặc try_on_max, KHÔNG BAO GIỜ dùng product_to_model.
+
 ## Quy tắc chung
 1. Chỉ dùng tool name có trong danh sách.
 2. inputs chứa tham chiếu ảnh: "$<user_key>" hoặc "$step_N_output".
 3. params chứa giá trị text (prompt, aspect_ratio, category...).
 4. Tối đa 3 bước.
 5. Ưu tiên tối đa dùng ảnh người dùng cung cấp, chỉ dùng model_create/face_to_model khi thực sự không có model nào.
-6. Output PHẢI là JSON thuần — không có text khác, không có markdown.
+6. Nếu prompt chứa "xóa nền" hoặc "remove background" → bước ĐẦU TIÊN BẮT BUỘC là remove_background với inputs={"image":"$<ảnh_gốc>"}; các bước sau dùng "$step_0_output" làm input thay cho ảnh gốc đó.
+7. Output PHẢI là JSON thuần — không có text khác, không có markdown.
 
 ## Format output bắt buộc
 {"goal":"...","steps":[{"tool":"...","inputs":{"model_image":"$model_image","garment_image":"$product_image"},"params":{},"reason":"..."}],"estimatedNote":"..."}`;
