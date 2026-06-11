@@ -97,6 +97,25 @@ router.post('/execute', async (req: AuthRequest, res: Response) => {
 });
 
 /**
+ * GET /api/workflow
+ * Lấy danh sách workflow gần đây của user (cho history panel).
+ */
+router.get('/', async (req: AuthRequest, res: Response) => {
+  const userId = req.user!.id;
+  if (!supabaseAdmin) { res.status(500).json({ success: false, error: 'DB không sẵn sàng' }); return; }
+
+  const { data, error } = await supabaseAdmin
+    .from('ai_workflows')
+    .select('id, prompt, status, estimated_credit, actual_credit, created_at')
+    .eq('user_id', userId)
+    .order('created_at', { ascending: false })
+    .limit(30);
+
+  if (error) { res.status(500).json({ success: false, error: error.message }); return; }
+  res.json({ success: true, data: data ?? [] });
+});
+
+/**
  * GET /api/workflow/:id
  * Lấy trạng thái workflow + danh sách bước (dùng cho polling).
  */
