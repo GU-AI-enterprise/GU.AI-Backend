@@ -211,6 +211,52 @@ ${JSON.stringify(toolList, null, 2)}
       throw new Error('Không thể lên kế hoạch từ yêu cầu này. Hãy mô tả chi tiết hơn.');
     }
 
+    // ── Post-processing: deterministic rule overrides (thắng LLM) ─────────────
+    const hasModelImage   = userInputKeys.includes('model_image');
+    const hasProductImage = userInputKeys.includes('product_image');
+    const promptLower     = prompt.toLowerCase();
+    const wantsRemoveBg   = promptLower.includes('xóa nền') || promptLower.includes('remove background');
+
+    // Rule A: model_image đã cung cấp → KHÔNG BAO GIỜ được dùng product_to_model
+    if (hasModelImage) {
+      plan.steps = (plan.steps as WorkflowStep[]).map(step => {
+        if (step.tool !== 'product_to_model') return step;
+        const garmentRef = step.inputs?.product_image
+          ?? step.inputs?.image
+          ?? (hasProductImage ? '$product_image' : '$step_0_output');
+        return {
+          tool: 'try_on',
+          inputs: { model_image: '$model_image', garment_image: garmentRef },
+          params: step.params ?? {},
+          reason: (step.reason ?? 'Mặc thử trang phục') + ' (người mẫu đã cung cấp)',
+        } as WorkflowStep;
+      });
+    }
+
+    // Rule B: "xóa nền" trong prompt + có product_image → bước đầu PHẢI là remove_background
+    if (wantsRemoveBg && hasProductImage) {
+      const alreadyHasRemoveBg = (plan.steps as WorkflowStep[]).some(s => s.tool === 'remove_background');
+      if (!alreadyHasRemoveBg) {
+        const removeBgStep: WorkflowStep = {
+          tool: 'remove_background',
+          inputs: { image: '$product_image' },
+          params: {},
+          reason: 'Xóa nền ảnh sản phẩm trước khi xử lý',
+        };
+        // Shift $product_image refs in existing steps → $step_0_output
+        const shiftedSteps = (plan.steps as WorkflowStep[]).map(step => ({
+          ...step,
+          inputs: Object.fromEntries(
+            Object.entries(step.inputs ?? {}).map(([k, v]) =>
+              [k, v === '$product_image' ? '$step_0_output' : v]
+            )
+          ),
+        }));
+        plan.steps = [removeBgStep, ...shiftedSteps];
+      }
+    }
+    // ── End post-processing ────────────────────────────────────────────────────
+
     const totalEstimatedCredit = (plan.steps as any[]).reduce((sum: number, s: any) => {
       const tool = WORKFLOW_TOOLS[s.tool as WorkflowToolName];
       return sum + (tool?.estimatedCredit ?? 0);
