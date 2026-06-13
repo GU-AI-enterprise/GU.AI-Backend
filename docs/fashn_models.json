@@ -1,0 +1,535 @@
+{
+  "meta": {
+    "source": "https://docs.fashn.ai/",
+    "compiled_date": "2026-06-01",
+    "language": "vi",
+    "api_base_url": "https://api.fashn.ai/v1",
+    "authentication": "Authorization: Bearer YOUR_API_KEY",
+    "run_endpoint": "POST https://api.fashn.ai/v1/run",
+    "status_endpoint": "GET https://api.fashn.ai/v1/status/{id}",
+    "run_body_shape": {
+      "model_name": "endpoint-specific-model-name",
+      "inputs": {
+        "...": "endpoint-specific parameters"
+      }
+    },
+    "status_values": {
+      "starting": "Prediction đang được khởi tạo.",
+      "in_queue": "Đang chờ trong hàng đợi.",
+      "processing": "Model đang xử lý.",
+      "completed": "Hoàn tất, output đã có.",
+      "failed": "Thất bại, xem error object."
+    }
+  },
+  "models": [
+    {
+      "model_name": "tryon-max",
+      "name": "Try-On Max",
+      "lifecycle": "experimental",
+      "purpose": "Recommended virtual try-on endpoint cho AI fashion photoshoot và e-commerce publishable content. Hỗ trợ clothing, shoes, hats, jewelry, bags và wearable items.",
+      "use_case": "Đặt sản phẩm lên ảnh model/người thật với chất lượng cao.",
+      "required": [
+        "product_image",
+        "model_image"
+      ],
+      "optional": [
+        "prompt",
+        "resolution",
+        "generation_mode",
+        "seed",
+        "num_images",
+        "output_format",
+        "return_base64"
+      ],
+      "param_values": {
+        "resolution": [
+          "1k",
+          "2k",
+          "4k"
+        ],
+        "generation_mode": [
+          "balanced",
+          "quality"
+        ],
+        "num_images": "1-4",
+        "output_format": [
+          "png",
+          "jpeg"
+        ]
+      },
+      "output": "PNG/JPEG URL hoặc base64",
+      "credit_cost": {
+        "balanced": {
+          "1k": 2,
+          "2k": 3,
+          "4k": 4
+        },
+        "quality": {
+          "1k": 3,
+          "2k": 4,
+          "4k": 5
+        },
+        "note": "num_images nhân tổng chi phí."
+      },
+      "notes": "Chọn khi có ảnh người/model cụ thể và muốn đặt sản phẩm vào người đó với chất lượng cao.",
+      "example_inputs": {
+        "product_image": "https://example.com/garment.jpg",
+        "model_image": "https://example.com/person.jpg",
+        "resolution": "1k",
+        "generation_mode": "balanced",
+        "output_format": "png"
+      },
+      "doc": "https://docs.fashn.ai/api-reference/tryon-max"
+    },
+    {
+      "model_name": "product-to-model",
+      "name": "Product to Model",
+      "lifecycle": "preview",
+      "purpose": "Biến ảnh sản phẩm-only thành hình người mẫu đang mặc/sử dụng sản phẩm. Có thể dùng inspiration image, background reference hoặc face reference.",
+      "use_case": "Tạo người mẫu đang mặc sản phẩm từ ảnh sản phẩm.",
+      "required": [
+        "product_image"
+      ],
+      "optional": [
+        "image_prompt",
+        "face_reference",
+        "face_reference_mode",
+        "prompt",
+        "aspect_ratio",
+        "resolution",
+        "generation_mode",
+        "background_reference",
+        "seed",
+        "num_images",
+        "output_format",
+        "return_base64"
+      ],
+      "param_values": {
+        "generation_mode": [
+          "fast",
+          "balanced",
+          "quality"
+        ]
+      },
+      "output": "PNG/JPEG URL hoặc base64",
+      "credit_cost": {
+        "fast": {
+          "1k": 1,
+          "2k": 2,
+          "4k": 3
+        },
+        "balanced": {
+          "1k": 2,
+          "2k": 3,
+          "4k": 4
+        },
+        "quality": {
+          "1k": 3,
+          "2k": 4,
+          "4k": 5
+        },
+        "face_reference_addon": "+3 credits/output"
+      },
+      "notes": "Không nên dùng model_image (deprecated) để kết hợp với người cụ thể; hãy dùng tryon-max cho trường hợp đó.",
+      "example_inputs": {
+        "product_image": "https://example.com/product.jpg",
+        "prompt": "professional office setting",
+        "aspect_ratio": "3:4",
+        "resolution": "1k"
+      },
+      "doc": "https://docs.fashn.ai/api-reference/product-to-model"
+    },
+    {
+      "model_name": "face-to-model",
+      "name": "Face to Model",
+      "lifecycle": "experimental",
+      "purpose": "Biến ảnh mặt/headshot/selfie thành upper-body avatar sẵn sàng cho virtual try-on, giữ facial identity.",
+      "use_case": "Biến ảnh mặt/headshot thành avatar upper-body dùng cho try-on.",
+      "required": [
+        "face_image"
+      ],
+      "optional": [
+        "prompt",
+        "aspect_ratio",
+        "resolution",
+        "generation_mode",
+        "seed",
+        "num_images",
+        "output_format",
+        "return_base64"
+      ],
+      "param_values": {
+        "aspect_ratio": [
+          "1:1",
+          "4:5",
+          "3:4",
+          "2:3",
+          "9:16"
+        ]
+      },
+      "output": "PNG/JPEG URL hoặc base64",
+      "credit_cost": {
+        "fast": {
+          "1k": 1,
+          "2k": 2,
+          "4k": 3
+        },
+        "balanced": {
+          "1k": 2,
+          "2k": 3,
+          "4k": 4
+        },
+        "quality": {
+          "1k": 3,
+          "2k": 4,
+          "4k": 5
+        }
+      },
+      "notes": "Hữu ích khi user chỉ có ảnh mặt, không có ảnh toàn thân/upper-body.",
+      "example_inputs": {
+        "face_image": "https://example.com/headshot.jpg",
+        "prompt": "athletic build",
+        "aspect_ratio": "2:3",
+        "output_format": "jpeg"
+      },
+      "doc": "https://docs.fashn.ai/api-reference/face-to-model"
+    },
+    {
+      "model_name": "model-create",
+      "name": "Model Create",
+      "lifecycle": "experimental",
+      "purpose": "Tạo model thời trang từ prompt, có thể dùng image_reference để hướng composition/pose và face_reference để giữ identity.",
+      "use_case": "Tạo model thời trang bằng prompt và ảnh tham chiếu.",
+      "required": [
+        "prompt"
+      ],
+      "optional": [
+        "image_reference",
+        "aspect_ratio",
+        "face_reference",
+        "face_reference_mode",
+        "resolution",
+        "generation_mode",
+        "seed",
+        "num_images",
+        "output_format",
+        "return_base64"
+      ],
+      "output": "PNG/JPEG URL hoặc base64",
+      "credit_cost": {
+        "fast": {
+          "1k": 1,
+          "2k": 2,
+          "4k": 3
+        },
+        "balanced": {
+          "1k": 2,
+          "2k": 3,
+          "4k": 4
+        },
+        "quality": {
+          "1k": 3,
+          "2k": 4,
+          "4k": 5
+        },
+        "face_reference_addon": "+3 credits/output"
+      },
+      "notes": "Nếu dùng face_reference, output bị giới hạn tối đa 2K và thường cộng thêm 20-30 giây xử lý.",
+      "example_inputs": {
+        "prompt": "Full body shot, woman wearing a white t-shirt and dark blue biker shorts",
+        "aspect_ratio": "3:4",
+        "resolution": "1k"
+      },
+      "doc": "https://docs.fashn.ai/api-reference/model-create"
+    },
+    {
+      "model_name": "model-swap",
+      "name": "Model Swap",
+      "lifecycle": "experimental",
+      "purpose": "Đổi danh tính model trong ảnh thời trang nhưng giữ nguyên quần áo, pose và styling.",
+      "use_case": "Đổi danh tính model nhưng giữ quần áo, pose, styling.",
+      "required": [
+        "model_image"
+      ],
+      "optional": [
+        "prompt",
+        "face_reference",
+        "face_reference_mode",
+        "resolution",
+        "generation_mode",
+        "seed",
+        "num_images",
+        "output_format",
+        "return_base64"
+      ],
+      "output": "PNG/JPEG URL hoặc base64",
+      "credit_cost": {
+        "fast": {
+          "1k": 1,
+          "2k": 2,
+          "4k": 3
+        },
+        "balanced": {
+          "1k": 2,
+          "2k": 3,
+          "4k": 4
+        },
+        "quality": {
+          "1k": 3,
+          "2k": 4,
+          "4k": 5
+        },
+        "face_reference_addon": "+3 credits/output"
+      },
+      "notes": "Dùng cho campaign cần đổi người mẫu nhưng vẫn giữ sản phẩm như ảnh gốc.",
+      "example_inputs": {
+        "model_image": "https://example.com/fashion-model.jpg",
+        "prompt": "Asian woman with blue hair"
+      },
+      "doc": "https://docs.fashn.ai/api-reference/model-swap"
+    },
+    {
+      "model_name": "edit",
+      "name": "Edit",
+      "lifecycle": "experimental",
+      "purpose": "Post-processing endpoint để chỉnh pose, góc nhìn, phụ kiện, ánh sáng, môi trường hoặc fix lỗi nhỏ trong output.",
+      "use_case": "Chỉnh ảnh theo prompt, giữ identity và product fidelity.",
+      "required": [
+        "image",
+        "prompt"
+      ],
+      "optional": [
+        "mask",
+        "image_context",
+        "resolution",
+        "generation_mode",
+        "seed",
+        "num_images",
+        "output_format",
+        "return_base64"
+      ],
+      "output": "PNG/JPEG URL hoặc base64",
+      "credit_cost": {
+        "fast": {
+          "1k": 1,
+          "2k": 2,
+          "4k": 3
+        },
+        "balanced": {
+          "1k": 2,
+          "2k": 3,
+          "4k": 4
+        },
+        "quality": {
+          "1k": 3,
+          "2k": 4,
+          "4k": 5
+        }
+      },
+      "notes": "Mask dùng pixel trắng để ưu tiên chỉnh, pixel đen để giữ; mask phải cùng kích thước với ảnh nguồn.",
+      "example_inputs": {
+        "image": "https://example.com/model.jpg",
+        "prompt": "turn the model slightly to the left, add a black leather crossbody bag"
+      },
+      "doc": "https://docs.fashn.ai/api-reference/edit"
+    },
+    {
+      "model_name": "reframe",
+      "name": "Reframe",
+      "lifecycle": "experimental",
+      "purpose": "Đổi aspect ratio bằng phân tích nội dung, tự quyết định crop hoặc expand/outpaint để đạt khung hình mới.",
+      "use_case": "Đổi aspect ratio bằng crop/outpaint thông minh.",
+      "required": [
+        "image",
+        "aspect_ratio"
+      ],
+      "optional": [
+        "resolution",
+        "generation_mode",
+        "num_images",
+        "seed",
+        "output_format",
+        "return_base64"
+      ],
+      "param_values": {
+        "supported_aspect_ratios": [
+          "21:9",
+          "1:1",
+          "4:3",
+          "3:2",
+          "2:3",
+          "5:4",
+          "4:5",
+          "3:4",
+          "16:9",
+          "9:16"
+        ]
+      },
+      "output": "PNG/JPEG URL hoặc base64",
+      "credit_cost": {
+        "fast": {
+          "1k": 1,
+          "2k": 2,
+          "4k": 3
+        },
+        "balanced": {
+          "1k": 2,
+          "2k": 3,
+          "4k": 4
+        },
+        "quality": {
+          "1k": 3,
+          "2k": 4,
+          "4k": 5
+        }
+      },
+      "notes": "Nếu ảnh đã đúng ratio, có thể báo InputValidationError.",
+      "example_inputs": {
+        "image": "https://example.com/portrait.jpg",
+        "aspect_ratio": "16:9",
+        "resolution": "1k"
+      },
+      "doc": "https://docs.fashn.ai/api-reference/reframe"
+    },
+    {
+      "model_name": "image-to-video",
+      "name": "Image to Video",
+      "lifecycle": "experimental",
+      "purpose": "Tạo video MP4 5-10 giây từ ảnh tĩnh, có chuyển động camera/model phù hợp thời trang.",
+      "use_case": "Tạo video MP4 5-10 giây từ một ảnh.",
+      "required": [
+        "image"
+      ],
+      "optional": [
+        "prompt",
+        "duration",
+        "resolution",
+        "end_image"
+      ],
+      "param_values": {
+        "duration": [
+          5,
+          10
+        ],
+        "resolution": [
+          "480p",
+          "720p",
+          "1080p"
+        ]
+      },
+      "output": "MP4 URL",
+      "credit_cost": {
+        "5s": {
+          "480p": 1,
+          "720p": 3,
+          "1080p": 6
+        },
+        "10s": {
+          "480p": 2,
+          "720p": 6,
+          "1080p": 12
+        }
+      },
+      "notes": "end_image chỉ hỗ trợ với resolution 1080p. Prompt nên ngắn và cụ thể, hoặc để trống để hệ thống tự tạo motion.",
+      "example_inputs": {
+        "image": "https://example.com/photo.jpg",
+        "duration": 5,
+        "resolution": "1080p"
+      },
+      "doc": "https://docs.fashn.ai/api-reference/image-to-video"
+    },
+    {
+      "model_name": "background-remove",
+      "name": "Background Remove",
+      "lifecycle": "experimental",
+      "purpose": "Xóa nền ảnh và tạo transparent PNG cutout của foreground subject.",
+      "use_case": "Xóa nền và trả PNG nền trong suốt.",
+      "required": [
+        "image"
+      ],
+      "optional": [
+        "return_base64"
+      ],
+      "output": "PNG URL/base64",
+      "credit_cost": {
+        "flat": "1 credit/output image"
+      },
+      "notes": "Processing time khoảng 1-3 giây; hỗ trợ ảnh lên đến 4MP.",
+      "example_inputs": {
+        "image": "https://example.com/portrait.jpg",
+        "return_base64": false
+      },
+      "doc": "https://docs.fashn.ai/api-reference/background-remove"
+    },
+    {
+      "model_name": "tryon-v1.6",
+      "name": "Virtual Try-On v1.6",
+      "lifecycle": "stable",
+      "purpose": "Virtual try-on nhanh, nhẹ, tối ưu realtime e-commerce. Ổn định hơn và rẻ hơn Try-On Max, nhưng ít tính năng/độ phân giải hơn.",
+      "use_case": "Try-on nhanh, nhẹ, phù hợp realtime e-commerce.",
+      "required": [
+        "model_image",
+        "garment_image"
+      ],
+      "optional": [
+        "category",
+        "segmentation_free",
+        "moderation_level",
+        "garment_photo_type",
+        "mode",
+        "seed",
+        "num_samples",
+        "output_format",
+        "return_base64"
+      ],
+      "param_values": {
+        "category": [
+          "auto",
+          "tops",
+          "bottoms",
+          "one-pieces"
+        ]
+      },
+      "output": "PNG/JPEG URL/base64",
+      "credit_cost": {
+        "flat": "1 credit/output image"
+      },
+      "processing_resolution": "864x1296",
+      "performance": {
+        "performance_mode": "~5s",
+        "balanced": "~8s",
+        "quality": "~12-17s"
+      },
+      "notes": "Dùng Try-On Max nếu cần studio-grade realism, 4K hoặc accessories.",
+      "example_inputs": {
+        "model_image": "https://example.com/model.jpg",
+        "garment_image": "https://example.com/garment.jpg",
+        "category": "auto",
+        "mode": "balanced"
+      },
+      "doc": "https://docs.fashn.ai/api-reference/tryon-v1-6"
+    },
+    {
+      "model_name": "credits",
+      "name": "Credits Balance",
+      "lifecycle": "utility",
+      "purpose": "Lấy số credits còn lại.",
+      "use_case": "Kiểm tra credits hiện tại.",
+      "endpoint": "GET https://api.fashn.ai/v1/credits",
+      "required": [
+        "Bearer token"
+      ],
+      "output": "JSON",
+      "rate_limit": "30 requests / 10 seconds",
+      "example_response": {
+        "credits": {
+          "total": 234,
+          "subscription": 100,
+          "on_demand": 134
+        }
+      },
+      "notes": "Không phải model output; là utility endpoint riêng (không qua /v1/run).",
+      "doc": "https://docs.fashn.ai/utility-endpoints/credits"
+    }
+  ]
+}

@@ -4,6 +4,7 @@ import { CreditService } from './credit.service';
 import { AssetCategory, AssetType } from '../constants/asset';
 import { TryOnCategory } from '../constants/ai';
 import { getIO } from '../config/socket';
+import { buildSystemPrompt, applyPostProcessingRules } from './workflow.rules';
 
 // ── Tool Registry ──────────────────────────────────────────────────────────────
 
@@ -135,64 +136,7 @@ export class WorkflowPlannerService {
       description: meta.description,
     }));
 
-    const hasUserInputs = userInputKeys.length > 0;
-
-    const inputLines = userInputKeys.map(k => {
-      const hints: Record<string, string> = {
-        product_image: '"product_image" — ảnh sản phẩm/trang phục → dùng "$product_image"',
-        model_image:   '"model_image" — ảnh người mẫu thật do user cung cấp → dùng "$model_image"',
-        face_image:    '"face_image" — ảnh khuôn mặt tham chiếu → dùng "$face_image"',
-      };
-      return `- ${hints[k] ?? `"${k}" → dùng "$${k}"`}`;
-    });
-
-    const inputSection = hasUserInputs
-      ? `Ảnh user đã đính kèm:\n${inputLines.join('\n')}`
-      : 'User chưa đính kèm ảnh.';
-
-    const imageRules: string[] = [];
-    if (userInputKeys.includes('model_image')) {
-      imageRules.push('- Có model_image: CHỈ dùng try_on/try_on_max/model_swap. KHÔNG dùng product_to_model.');
-    }
-    if (userInputKeys.includes('product_image') && !userInputKeys.includes('model_image')) {
-      imageRules.push('- Có product_image, không có model_image: dùng product_to_model.');
-    }
-    if (userInputKeys.includes('product_image') && userInputKeys.includes('model_image')) {
-      imageRules.push('- Có cả product_image và model_image: dùng try_on hoặc try_on_max.');
-    }
-    if (userInputKeys.includes('face_image') && !userInputKeys.includes('model_image')) {
-      imageRules.push('- Có face_image, không có model_image: dùng face_to_model trước.');
-    }
-
-    const imageRulesSection = imageRules.length > 0
-      ? `\n## Ràng buộc tool theo ảnh đính kèm\n${imageRules.join('\n')}`
-      : '';
-
-    const systemPrompt = `Bạn là GU.AI Assistant — trợ lý AI xử lý ảnh thời trang thông minh, thân thiện, nói tiếng Việt.
-
-Nhiệm vụ: hỗ trợ user lên kế hoạch workflow xử lý ảnh. Hãy trò chuyện tự nhiên, hỏi làm rõ nếu cần.
-
-## ${inputSection}
-${imageRulesSection}
-
-## Khi đã đủ thông tin để lên kế hoạch
-Trả lời ngắn (1-2 câu) xác nhận bạn hiểu yêu cầu, rồi đặt kế hoạch trong một khối JSON duy nhất như sau:
-
-\`\`\`json
-{"goal":"...","steps":[{"tool":"...","inputs":{},"params":{},"reason":"..."}],"estimatedNote":"..."}
-\`\`\`
-
-Output của bước N (0-indexed) là "$step_N_output".
-
-## Danh sách tool
-${JSON.stringify(toolList, null, 2)}
-
-## Lưu ý quan trọng
-- inputs chứa tham chiếu ảnh: "$<user_key>" hoặc "$step_N_output"
-- params chứa text (prompt, aspect_ratio, category...)
-- Tối đa 3 bước
-- "xóa nền" → bước đầu PHẢI là remove_background
-- Nếu chưa rõ yêu cầu hoặc muốn xác nhận: hỏi tự nhiên, KHÔNG tạo JSON`;
+    const systemPrompt = buildSystemPrompt(userInputKeys, toolList);
 
     // Build conversation contents for Gemini
     const contents = [
@@ -246,48 +190,7 @@ ${JSON.stringify(toolList, null, 2)}
       return { message: messageText || rawText.trim(), plan: null };
     }
 
-    // ── Post-processing: deterministic overrides ───────────────────────────────
-    const hasModelImage   = userInputKeys.includes('model_image');
-    const hasProductImage = userInputKeys.includes('product_image');
-    const msgLower        = userMessage.toLowerCase();
-    const wantsRemoveBg   = msgLower.includes('xóa nền') || msgLower.includes('remove background');
-
-    if (hasModelImage) {
-      planRaw.steps = (planRaw.steps as WorkflowStep[]).map(step => {
-        if (step.tool !== 'product_to_model') return step;
-        const garmentRef = step.inputs?.product_image
-          ?? step.inputs?.image
-          ?? (hasProductImage ? '$product_image' : '$step_0_output');
-        return {
-          tool: 'try_on',
-          inputs: { model_image: '$model_image', garment_image: garmentRef },
-          params: step.params ?? {},
-          reason: (step.reason ?? 'Mặc thử trang phục') + ' (người mẫu đã cung cấp)',
-        } as WorkflowStep;
-      });
-    }
-
-    if (wantsRemoveBg && hasProductImage) {
-      const alreadyHas = (planRaw.steps as WorkflowStep[]).some(s => s.tool === 'remove_background');
-      if (!alreadyHas) {
-        const removeBgStep: WorkflowStep = {
-          tool: 'remove_background',
-          inputs: { image: '$product_image' },
-          params: {},
-          reason: 'Xóa nền ảnh sản phẩm trước khi xử lý',
-        };
-        const shifted = (planRaw.steps as WorkflowStep[]).map(step => ({
-          ...step,
-          inputs: Object.fromEntries(
-            Object.entries(step.inputs ?? {}).map(([k, v]) =>
-              [k, v === '$product_image' ? '$step_0_output' : v]
-            )
-          ),
-        }));
-        planRaw.steps = [removeBgStep, ...shifted];
-      }
-    }
-    // ── End post-processing ────────────────────────────────────────────────────
+    planRaw.steps = applyPostProcessingRules(planRaw.steps as WorkflowStep[], userInputKeys, userMessage);
 
     const totalEstimatedCredit = (planRaw.steps as any[]).reduce((sum: number, s: any) => {
       const tool = WORKFLOW_TOOLS[s.tool as WorkflowToolName];
