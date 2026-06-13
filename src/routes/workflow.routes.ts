@@ -4,6 +4,10 @@ import {
   WorkflowPlannerService,
   WorkflowValidatorService,
   WorkflowExecutorService,
+  PLANNING_MODELS,
+  DEFAULT_PLANNING_MODEL,
+  type PlanningModelId,
+  type ConversationTurn,
 } from '../services/workflow.service';
 import { CreditService } from '../services/credit.service';
 import { supabaseAdmin } from '../config/supabase';
@@ -12,37 +16,68 @@ const router = Router();
 router.use(requireAuth);
 
 /**
- * POST /api/workflow/plan
- * Planner: gọi Groq để lên kế hoạch → validate → trả về plan để user confirm.
+ * GET /api/workflow/models
+ * Danh sách model AI có thể chọn để lên kế hoạch.
  */
-router.post('/plan', async (req: AuthRequest, res: Response) => {
-  const { prompt, userInputUrls } = req.body as {
-    prompt: string;
+router.get('/models', (_req, res: Response) => {
+  const models = Object.entries(PLANNING_MODELS).map(([id, meta]) => ({
+    id,
+    label: meta.label,
+    default: id === DEFAULT_PLANNING_MODEL,
+  }));
+  res.json({ success: true, data: models });
+});
+
+/**
+ * POST /api/workflow/chat
+ * Gửi tin nhắn đến Gemini. Trả về { message, plan } — plan là null nếu AI chỉ chat.
+ */
+router.post('/chat', async (req: AuthRequest, res: Response) => {
+  const { message, userInputUrls, model, history } = req.body as {
+    message: string;
     userInputUrls?: Record<string, string>;
+    model?: string;
+    history?: ConversationTurn[];
   };
 
-  if (!prompt?.trim()) {
-    res.status(400).json({ success: false, error: 'prompt là bắt buộc' });
+  if (!message?.trim()) {
+    res.status(400).json({ success: false, error: 'message là bắt buộc' });
     return;
   }
+
+  const modelId: PlanningModelId = (model && model in PLANNING_MODELS)
+    ? (model as PlanningModelId)
+    : DEFAULT_PLANNING_MODEL;
 
   const inputUrls = userInputUrls ?? {};
   const userInputKeys = Object.keys(inputUrls);
 
   try {
-    const plan = await WorkflowPlannerService.plan(prompt.trim(), userInputKeys);
-    const validation = WorkflowValidatorService.validate(plan, userInputKeys);
+    const result = await WorkflowPlannerService.chat(
+      message.trim(),
+      userInputKeys,
+      history ?? [],
+      modelId,
+    );
 
-    if (!validation.ok) {
-      res.status(422).json({
-        success: false,
-        error: 'Kế hoạch không hợp lệ: ' + validation.errors[0],
-        details: validation.errors,
-      });
-      return;
+    // If a plan was produced, validate it
+    if (result.plan) {
+      const validation = WorkflowValidatorService.validate(result.plan, userInputKeys);
+      if (!validation.ok) {
+        // Return the message but drop the invalid plan; let the user retry
+        return res.json({
+          success: true,
+          data: {
+            message: result.message
+              + `\n\n⚠️ Kế hoạch vừa tạo có lỗi: ${validation.errors[0]}. Hãy mô tả lại yêu cầu.`,
+            plan: null,
+            model: modelId,
+          },
+        });
+      }
     }
 
-    res.json({ success: true, data: { plan } });
+    res.json({ success: true, data: { message: result.message, plan: result.plan, model: modelId } });
   } catch (err: any) {
     res.status(500).json({ success: false, error: err.message });
   }

@@ -93,12 +93,40 @@ export interface ValidationResult {
   errors: string[];
 }
 
+export interface PlannerResponse {
+  message: string;
+  plan: WorkflowPlan | null;
+}
+
+export interface ConversationTurn {
+  role: 'user' | 'assistant';
+  text: string;
+}
+
+// ── Planner ────────────────────────────────────────────────────────────────────
+
+// ── Supported planning models ──────────────────────────────────────────────────
+
+export const PLANNING_MODELS = {
+  'gemini-2.5-flash': { label: 'Gemini 2.5 Flash', provider: 'gemini' as const },
+  'gemini-2.5-pro':   { label: 'Gemini 2.5 Pro',   provider: 'gemini' as const },
+  'gemini-2.0-flash': { label: 'Gemini 2.0 Flash',  provider: 'gemini' as const },
+} as const;
+
+export type PlanningModelId = keyof typeof PLANNING_MODELS;
+export const DEFAULT_PLANNING_MODEL: PlanningModelId = 'gemini-2.5-flash';
+
 // ── Planner ────────────────────────────────────────────────────────────────────
 
 export class WorkflowPlannerService {
-  static async plan(prompt: string, userInputKeys: string[]): Promise<WorkflowPlan> {
-    const apiKey = process.env.GROQ_API_KEY;
-    if (!apiKey) throw new Error('GROQ_API_KEY chưa được cấu hình');
+  static async chat(
+    userMessage: string,
+    userInputKeys: string[],
+    history: ConversationTurn[] = [],
+    modelId: PlanningModelId = DEFAULT_PLANNING_MODEL,
+  ): Promise<PlannerResponse> {
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey) throw new Error('GEMINI_API_KEY chưa được cấu hình');
 
     const toolList = Object.entries(WORKFLOW_TOOLS).map(([name, meta]) => ({
       name,
@@ -109,117 +137,123 @@ export class WorkflowPlannerService {
 
     const hasUserInputs = userInputKeys.length > 0;
 
-    // Build a clear description of what each user image is for
     const inputLines = userInputKeys.map(k => {
       const hints: Record<string, string> = {
-        product_image: '"product_image" — ảnh sản phẩm/trang phục của user → dùng "$product_image"',
-        model_image:   '"model_image" — ảnh người mẫu thật do user cung cấp → dùng "$model_image" làm model_image input',
-        face_image:    '"face_image" — ảnh khuôn mặt tham chiếu → dùng "$face_image" làm face_image hoặc face_reference input',
+        product_image: '"product_image" — ảnh sản phẩm/trang phục → dùng "$product_image"',
+        model_image:   '"model_image" — ảnh người mẫu thật do user cung cấp → dùng "$model_image"',
+        face_image:    '"face_image" — ảnh khuôn mặt tham chiếu → dùng "$face_image"',
       };
       return `- ${hints[k] ?? `"${k}" → dùng "$${k}"`}`;
     });
 
     const inputSection = hasUserInputs
-      ? `Ảnh người dùng đã cung cấp (BẮT BUỘC phải dùng hết các ảnh này):\n${inputLines.join('\n')}`
-      : 'Người dùng không cung cấp ảnh nào — tạo mới bằng model_create hoặc face_to_model.';
+      ? `Ảnh user đã đính kèm:\n${inputLines.join('\n')}`
+      : 'User chưa đính kèm ảnh.';
 
-    // Build explicit usage rules based on which images are present
     const imageRules: string[] = [];
     if (userInputKeys.includes('model_image')) {
-      imageRules.push('- Có "model_image": TUYỆT ĐỐI PHẢI dùng nó làm model_image input. CHỈ ĐƯỢC dùng try_on (garment_image = sản phẩm) hoặc try_on_max (product_image = sản phẩm, model_image = người mẫu) hoặc model_swap. TUYỆT ĐỐI KHÔNG ĐƯỢC dùng product_to_model khi đã có model_image — dù prompt có nói "người mẫu AI" hay bất cứ từ nào khác.');
+      imageRules.push('- Có model_image: CHỈ dùng try_on/try_on_max/model_swap. KHÔNG dùng product_to_model.');
     }
     if (userInputKeys.includes('product_image') && !userInputKeys.includes('model_image')) {
-      imageRules.push('- Có "product_image" nhưng KHÔNG có model_image: dùng product_to_model (AI tự tạo người mẫu). Nếu prompt có từ "xóa nền" → BẮT BUỘC thêm bước remove_background($product_image) trước, sau đó product_to_model($step_0_output).');
+      imageRules.push('- Có product_image, không có model_image: dùng product_to_model.');
     }
     if (userInputKeys.includes('product_image') && userInputKeys.includes('model_image')) {
-      imageRules.push('- Có CẢ product_image VÀ model_image: PHẢI dùng try_on (model_image=$model_image, garment_image=$product_image) hoặc try_on_max (model_image=$model_image, product_image=$product_image). Nếu prompt có từ "xóa nền" → bước 1 là remove_background($product_image), bước 2 là try_on(model_image=$model_image, garment_image=$step_0_output).');
+      imageRules.push('- Có cả product_image và model_image: dùng try_on hoặc try_on_max.');
     }
     if (userInputKeys.includes('face_image') && !userInputKeys.includes('model_image')) {
-      imageRules.push('- Có "face_image" nhưng không có model_image: dùng face_to_model để tạo model từ khuôn mặt trước.');
-    }
-    if (userInputKeys.includes('face_image') && userInputKeys.includes('model_image')) {
-      imageRules.push('- Có cả face_image và model_image: dùng model_swap với face_reference="$face_image" để ghép khuôn mặt lên model_image.');
+      imageRules.push('- Có face_image, không có model_image: dùng face_to_model trước.');
     }
 
     const imageRulesSection = imageRules.length > 0
-      ? `\n## Quy tắc bắt buộc dựa trên ảnh đã cung cấp\n${imageRules.join('\n')}`
+      ? `\n## Ràng buộc tool theo ảnh đính kèm\n${imageRules.join('\n')}`
       : '';
 
-    const systemPrompt = `Bạn là AI Workflow Planner cho GU.AI — nền tảng xử lý ảnh thời trang.
+    const systemPrompt = `Bạn là GU.AI Assistant — trợ lý AI xử lý ảnh thời trang thông minh, thân thiện, nói tiếng Việt.
 
-## Nhiệm vụ
-Tạo workflow xử lý ảnh dựa trên yêu cầu người dùng.
+Nhiệm vụ: hỗ trợ user lên kế hoạch workflow xử lý ảnh. Hãy trò chuyện tự nhiên, hỏi làm rõ nếu cần.
 
 ## ${inputSection}
 ${imageRulesSection}
 
-Output của bước N (0-based index) là "$step_N_output". Bước tiếp theo dùng "$step_N_output" làm input.
+## Khi đã đủ thông tin để lên kế hoạch
+Trả lời ngắn (1-2 câu) xác nhận bạn hiểu yêu cầu, rồi đặt kế hoạch trong một khối JSON duy nhất như sau:
 
-## Danh sách tool cho phép
+\`\`\`json
+{"goal":"...","steps":[{"tool":"...","inputs":{},"params":{},"reason":"..."}],"estimatedNote":"..."}
+\`\`\`
+
+Output của bước N (0-indexed) là "$step_N_output".
+
+## Danh sách tool
 ${JSON.stringify(toolList, null, 2)}
 
-## Phân biệt tool — ĐỌC KỸ
-- product_to_model: AI tự tạo người mẫu hoàn toàn mới. CHỈ dùng khi KHÔNG có model_image.
-- try_on: Mặc trang phục lên người mẫu thật. PHẢI có model_image + garment_image.
-- try_on_max: Try-on chất lượng cao. PHẢI có model_image + product_image.
-→ Nếu có model_image → LUÔN dùng try_on hoặc try_on_max, KHÔNG BAO GIỜ dùng product_to_model.
+## Lưu ý quan trọng
+- inputs chứa tham chiếu ảnh: "$<user_key>" hoặc "$step_N_output"
+- params chứa text (prompt, aspect_ratio, category...)
+- Tối đa 3 bước
+- "xóa nền" → bước đầu PHẢI là remove_background
+- Nếu chưa rõ yêu cầu hoặc muốn xác nhận: hỏi tự nhiên, KHÔNG tạo JSON`;
 
-## Quy tắc chung
-1. Chỉ dùng tool name có trong danh sách.
-2. inputs chứa tham chiếu ảnh: "$<user_key>" hoặc "$step_N_output".
-3. params chứa giá trị text (prompt, aspect_ratio, category...).
-4. Tối đa 3 bước.
-5. Ưu tiên tối đa dùng ảnh người dùng cung cấp, chỉ dùng model_create/face_to_model khi thực sự không có model nào.
-6. Nếu prompt chứa "xóa nền" hoặc "remove background" → bước ĐẦU TIÊN BẮT BUỘC là remove_background với inputs={"image":"$<ảnh_gốc>"}; các bước sau dùng "$step_0_output" làm input thay cho ảnh gốc đó.
-7. Output PHẢI là JSON thuần — không có text khác, không có markdown.
+    // Build conversation contents for Gemini
+    const contents = [
+      ...history.map(turn => ({
+        role: turn.role === 'assistant' ? 'model' : 'user',
+        parts: [{ text: turn.text }],
+      })),
+      { role: 'user', parts: [{ text: userMessage }] },
+    ];
 
-## Format output bắt buộc
-{"goal":"...","steps":[{"tool":"...","inputs":{"model_image":"$model_image","garment_image":"$product_image"},"params":{},"reason":"..."}],"estimatedNote":"..."}`;
+    const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${modelId}:generateContent?key=${apiKey}`;
 
-    const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+    const res = await fetch(geminiUrl, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        model: 'llama-3.3-70b-versatile',
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: `Yêu cầu: "${prompt}"` },
-        ],
-        max_tokens: 1024,
-        temperature: 0.2,
-        response_format: { type: 'json_object' },
+        systemInstruction: { parts: [{ text: systemPrompt }] },
+        contents,
+        generationConfig: {
+          temperature: 0.3,
+          maxOutputTokens: 1500,
+        },
       }),
     });
 
     if (!res.ok) {
       const err = await res.json() as any;
-      throw new Error(`Groq API lỗi: ${err.error?.message ?? res.status}`);
+      throw new Error(`Gemini API lỗi: ${err.error?.message ?? res.status}`);
     }
 
     const data = await res.json() as any;
-    let content: string = data.choices?.[0]?.message?.content ?? '{}';
-    content = content.replace(/^```(?:json)?\s*/m, '').replace(/\s*```$/m, '').trim();
+    const rawText: string = data.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
 
-    let plan: any;
+    // Extract JSON plan from code block if present
+    const jsonMatch = rawText.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
+    const messageText = rawText.replace(/```(?:json)?[\s\S]*?```/g, '').trim();
+
+    if (!jsonMatch) {
+      return { message: rawText.trim(), plan: null };
+    }
+
+    let planRaw: any;
     try {
-      plan = JSON.parse(content);
+      planRaw = JSON.parse(jsonMatch[1].trim());
     } catch {
-      throw new Error('AI trả về kết quả không hợp lệ. Hãy thử lại với mô tả rõ hơn.');
+      // Gemini returned something in a code block that wasn't valid JSON — treat as message
+      return { message: rawText.trim(), plan: null };
     }
 
-    if (!Array.isArray(plan.steps) || plan.steps.length === 0) {
-      throw new Error('Không thể lên kế hoạch từ yêu cầu này. Hãy mô tả chi tiết hơn.');
+    if (!Array.isArray(planRaw.steps) || planRaw.steps.length === 0) {
+      return { message: messageText || rawText.trim(), plan: null };
     }
 
-    // ── Post-processing: deterministic rule overrides (thắng LLM) ─────────────
+    // ── Post-processing: deterministic overrides ───────────────────────────────
     const hasModelImage   = userInputKeys.includes('model_image');
     const hasProductImage = userInputKeys.includes('product_image');
-    const promptLower     = prompt.toLowerCase();
-    const wantsRemoveBg   = promptLower.includes('xóa nền') || promptLower.includes('remove background');
+    const msgLower        = userMessage.toLowerCase();
+    const wantsRemoveBg   = msgLower.includes('xóa nền') || msgLower.includes('remove background');
 
-    // Rule A: model_image đã cung cấp → KHÔNG BAO GIỜ được dùng product_to_model
     if (hasModelImage) {
-      plan.steps = (plan.steps as WorkflowStep[]).map(step => {
+      planRaw.steps = (planRaw.steps as WorkflowStep[]).map(step => {
         if (step.tool !== 'product_to_model') return step;
         const garmentRef = step.inputs?.product_image
           ?? step.inputs?.image
@@ -233,18 +267,16 @@ ${JSON.stringify(toolList, null, 2)}
       });
     }
 
-    // Rule B: "xóa nền" trong prompt + có product_image → bước đầu PHẢI là remove_background
     if (wantsRemoveBg && hasProductImage) {
-      const alreadyHasRemoveBg = (plan.steps as WorkflowStep[]).some(s => s.tool === 'remove_background');
-      if (!alreadyHasRemoveBg) {
+      const alreadyHas = (planRaw.steps as WorkflowStep[]).some(s => s.tool === 'remove_background');
+      if (!alreadyHas) {
         const removeBgStep: WorkflowStep = {
           tool: 'remove_background',
           inputs: { image: '$product_image' },
           params: {},
           reason: 'Xóa nền ảnh sản phẩm trước khi xử lý',
         };
-        // Shift $product_image refs in existing steps → $step_0_output
-        const shiftedSteps = (plan.steps as WorkflowStep[]).map(step => ({
+        const shifted = (planRaw.steps as WorkflowStep[]).map(step => ({
           ...step,
           inputs: Object.fromEntries(
             Object.entries(step.inputs ?? {}).map(([k, v]) =>
@@ -252,22 +284,24 @@ ${JSON.stringify(toolList, null, 2)}
             )
           ),
         }));
-        plan.steps = [removeBgStep, ...shiftedSteps];
+        planRaw.steps = [removeBgStep, ...shifted];
       }
     }
     // ── End post-processing ────────────────────────────────────────────────────
 
-    const totalEstimatedCredit = (plan.steps as any[]).reduce((sum: number, s: any) => {
+    const totalEstimatedCredit = (planRaw.steps as any[]).reduce((sum: number, s: any) => {
       const tool = WORKFLOW_TOOLS[s.tool as WorkflowToolName];
       return sum + (tool?.estimatedCredit ?? 0);
     }, 0);
 
-    return {
-      goal: String(plan.goal ?? ''),
-      steps: plan.steps,
-      estimatedNote: plan.estimatedNote,
+    const plan: WorkflowPlan = {
+      goal: String(planRaw.goal ?? ''),
+      steps: planRaw.steps,
+      estimatedNote: planRaw.estimatedNote,
       totalEstimatedCredit,
     };
+
+    return { message: messageText, plan };
   }
 }
 
