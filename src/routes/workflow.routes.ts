@@ -9,11 +9,25 @@ import {
   type PlanningModelId,
   type ConversationTurn,
 } from '../services/workflow.service';
+import { FashnToolsService } from '../services/fashn-tools.service';
 import { CreditService } from '../services/credit.service';
 import { supabaseAdmin } from '../config/supabase';
 
 const router = Router();
 router.use(requireAuth);
+
+/**
+ * GET /api/workflow/tools
+ * Danh sách fashn tools từ DB — dùng cho frontend hiển thị label/credit.
+ */
+router.get('/tools', async (_req, res: Response) => {
+  try {
+    const tools = await FashnToolsService.getAll();
+    res.json({ success: true, data: tools });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
 
 /**
  * GET /api/workflow/models
@@ -62,7 +76,7 @@ router.post('/chat', async (req: AuthRequest, res: Response) => {
 
     // If a plan was produced, validate it
     if (result.plan) {
-      const validation = WorkflowValidatorService.validate(result.plan, userInputKeys);
+      const validation = await WorkflowValidatorService.validate(result.plan, userInputKeys);
       if (!validation.ok) {
         // Return the message but drop the invalid plan; let the user retry
         return res.json({

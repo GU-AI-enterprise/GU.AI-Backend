@@ -29,34 +29,62 @@
       "purpose": "Recommended virtual try-on endpoint cho AI fashion photoshoot và e-commerce publishable content. Hỗ trợ clothing, shoes, hats, jewelry, bags và wearable items.",
       "use_case": "Đặt sản phẩm lên ảnh model/người thật với chất lượng cao.",
       "required": [
-        "product_image",
-        "model_image"
+        {
+          "name": "product_image",
+          "type": "string",
+          "format": "image_url_or_base64"
+        },
+        {
+          "name": "model_image",
+          "type": "string",
+          "format": "image_url_or_base64"
+        }
       ],
       "optional": [
-        "prompt",
-        "resolution",
-        "generation_mode",
-        "seed",
-        "num_images",
-        "output_format",
-        "return_base64"
+        {
+          "name": "prompt",
+          "type": "string"
+        },
+        {
+          "name": "resolution",
+          "type": "string",
+          "enum": [
+            "1k",
+            "2k",
+            "4k"
+          ]
+        },
+        {
+          "name": "generation_mode",
+          "type": "string",
+          "enum": [
+            "balanced",
+            "quality"
+          ]
+        },
+        {
+          "name": "seed",
+          "type": "integer"
+        },
+        {
+          "name": "num_images",
+          "type": "integer",
+          "min": 1,
+          "max": 4
+        },
+        {
+          "name": "output_format",
+          "type": "string",
+          "enum": [
+            "png",
+            "jpeg"
+          ]
+        },
+        {
+          "name": "return_base64",
+          "type": "boolean"
+        }
       ],
-      "param_values": {
-        "resolution": [
-          "1k",
-          "2k",
-          "4k"
-        ],
-        "generation_mode": [
-          "balanced",
-          "quality"
-        ],
-        "num_images": "1-4",
-        "output_format": [
-          "png",
-          "jpeg"
-        ]
-      },
       "output": "PNG/JPEG URL hoặc base64",
       "credit_cost": {
         "balanced": {
@@ -88,29 +116,74 @@
       "purpose": "Biến ảnh sản phẩm-only thành hình người mẫu đang mặc/sử dụng sản phẩm. Có thể dùng inspiration image, background reference hoặc face reference.",
       "use_case": "Tạo người mẫu đang mặc sản phẩm từ ảnh sản phẩm.",
       "required": [
-        "product_image"
+        {
+          "name": "product_image",
+          "type": "string",
+          "format": "image_url_or_base64"
+        }
       ],
       "optional": [
-        "image_prompt",
-        "face_reference",
-        "face_reference_mode",
-        "prompt",
-        "aspect_ratio",
-        "resolution",
-        "generation_mode",
-        "background_reference",
-        "seed",
-        "num_images",
-        "output_format",
-        "return_base64"
+        {
+          "name": "image_prompt",
+          "type": "string",
+          "format": "image_url_or_base64"
+        },
+        {
+          "name": "face_reference",
+          "type": "string",
+          "format": "image_url_or_base64"
+        },
+        {
+          "name": "face_reference_mode",
+          "type": "string"
+        },
+        {
+          "name": "prompt",
+          "type": "string"
+        },
+        {
+          "name": "aspect_ratio",
+          "type": "string"
+        },
+        {
+          "name": "resolution",
+          "type": "string"
+        },
+        {
+          "name": "generation_mode",
+          "type": "string",
+          "enum": [
+            "fast",
+            "balanced",
+            "quality"
+          ]
+        },
+        {
+          "name": "background_reference",
+          "type": "string",
+          "format": "image_url_or_base64"
+        },
+        {
+          "name": "seed",
+          "type": "integer"
+        },
+        {
+          "name": "num_images",
+          "type": "integer"
+        },
+        {
+          "name": "output_format",
+          "type": "string",
+          "enum": [
+            "png",
+            "jpeg"
+          ]
+        },
+        {
+          "name": "return_base64",
+          "type": "boolean"
+        }
       ],
-      "param_values": {
-        "generation_mode": [
-          "fast",
-          "balanced",
-          "quality"
-        ]
-      },
       "output": "PNG/JPEG URL hoặc base64",
       "credit_cost": {
         "fast": {
@@ -146,27 +219,62 @@
       "purpose": "Biến ảnh mặt/headshot/selfie thành upper-body avatar sẵn sàng cho virtual try-on, giữ facial identity.",
       "use_case": "Biến ảnh mặt/headshot thành avatar upper-body dùng cho try-on.",
       "required": [
-        "face_image"
+        {
+          "name": "face_image",
+          "type": "string",
+          "format": "image_url_or_base64"
+        }
       ],
       "optional": [
-        "prompt",
-        "aspect_ratio",
-        "resolution",
-        "generation_mode",
-        "seed",
-        "num_images",
-        "output_format",
-        "return_base64"
+        {
+          "name": "prompt",
+          "type": "string"
+        },
+        {
+          "name": "aspect_ratio",
+          "type": "string",
+          "enum": [
+            "1:1",
+            "4:5",
+            "3:4",
+            "2:3",
+            "9:16"
+          ]
+        },
+        {
+          "name": "resolution",
+          "type": "string"
+        },
+        {
+          "name": "generation_mode",
+          "type": "string",
+          "enum": [
+            "fast",
+            "balanced",
+            "quality"
+          ]
+        },
+        {
+          "name": "seed",
+          "type": "integer"
+        },
+        {
+          "name": "num_images",
+          "type": "integer"
+        },
+        {
+          "name": "output_format",
+          "type": "string",
+          "enum": [
+            "png",
+            "jpeg"
+          ]
+        },
+        {
+          "name": "return_base64",
+          "type": "boolean"
+        }
       ],
-      "param_values": {
-        "aspect_ratio": [
-          "1:1",
-          "4:5",
-          "3:4",
-          "2:3",
-          "9:16"
-        ]
-      },
       "output": "PNG/JPEG URL hoặc base64",
       "credit_cost": {
         "fast": {
@@ -201,19 +309,63 @@
       "purpose": "Tạo model thời trang từ prompt, có thể dùng image_reference để hướng composition/pose và face_reference để giữ identity.",
       "use_case": "Tạo model thời trang bằng prompt và ảnh tham chiếu.",
       "required": [
-        "prompt"
+        {
+          "name": "prompt",
+          "type": "string"
+        }
       ],
       "optional": [
-        "image_reference",
-        "aspect_ratio",
-        "face_reference",
-        "face_reference_mode",
-        "resolution",
-        "generation_mode",
-        "seed",
-        "num_images",
-        "output_format",
-        "return_base64"
+        {
+          "name": "image_reference",
+          "type": "string",
+          "format": "image_url_or_base64"
+        },
+        {
+          "name": "aspect_ratio",
+          "type": "string"
+        },
+        {
+          "name": "face_reference",
+          "type": "string",
+          "format": "image_url_or_base64"
+        },
+        {
+          "name": "face_reference_mode",
+          "type": "string"
+        },
+        {
+          "name": "resolution",
+          "type": "string"
+        },
+        {
+          "name": "generation_mode",
+          "type": "string",
+          "enum": [
+            "fast",
+            "balanced",
+            "quality"
+          ]
+        },
+        {
+          "name": "seed",
+          "type": "integer"
+        },
+        {
+          "name": "num_images",
+          "type": "integer"
+        },
+        {
+          "name": "output_format",
+          "type": "string",
+          "enum": [
+            "png",
+            "jpeg"
+          ]
+        },
+        {
+          "name": "return_base64",
+          "type": "boolean"
+        }
       ],
       "output": "PNG/JPEG URL hoặc base64",
       "credit_cost": {
@@ -249,18 +401,59 @@
       "purpose": "Đổi danh tính model trong ảnh thời trang nhưng giữ nguyên quần áo, pose và styling.",
       "use_case": "Đổi danh tính model nhưng giữ quần áo, pose, styling.",
       "required": [
-        "model_image"
+        {
+          "name": "model_image",
+          "type": "string",
+          "format": "image_url_or_base64"
+        }
       ],
       "optional": [
-        "prompt",
-        "face_reference",
-        "face_reference_mode",
-        "resolution",
-        "generation_mode",
-        "seed",
-        "num_images",
-        "output_format",
-        "return_base64"
+        {
+          "name": "prompt",
+          "type": "string"
+        },
+        {
+          "name": "face_reference",
+          "type": "string",
+          "format": "image_url_or_base64"
+        },
+        {
+          "name": "face_reference_mode",
+          "type": "string"
+        },
+        {
+          "name": "resolution",
+          "type": "string"
+        },
+        {
+          "name": "generation_mode",
+          "type": "string",
+          "enum": [
+            "fast",
+            "balanced",
+            "quality"
+          ]
+        },
+        {
+          "name": "seed",
+          "type": "integer"
+        },
+        {
+          "name": "num_images",
+          "type": "integer"
+        },
+        {
+          "name": "output_format",
+          "type": "string",
+          "enum": [
+            "png",
+            "jpeg"
+          ]
+        },
+        {
+          "name": "return_base64",
+          "type": "boolean"
+        }
       ],
       "output": "PNG/JPEG URL hoặc base64",
       "credit_cost": {
@@ -295,18 +488,60 @@
       "purpose": "Post-processing endpoint để chỉnh pose, góc nhìn, phụ kiện, ánh sáng, môi trường hoặc fix lỗi nhỏ trong output.",
       "use_case": "Chỉnh ảnh theo prompt, giữ identity và product fidelity.",
       "required": [
-        "image",
-        "prompt"
+        {
+          "name": "image",
+          "type": "string",
+          "format": "image_url_or_base64"
+        },
+        {
+          "name": "prompt",
+          "type": "string"
+        }
       ],
       "optional": [
-        "mask",
-        "image_context",
-        "resolution",
-        "generation_mode",
-        "seed",
-        "num_images",
-        "output_format",
-        "return_base64"
+        {
+          "name": "mask",
+          "type": "string",
+          "format": "image_url_or_base64"
+        },
+        {
+          "name": "image_context",
+          "type": "string",
+          "format": "image_url_or_base64"
+        },
+        {
+          "name": "resolution",
+          "type": "string"
+        },
+        {
+          "name": "generation_mode",
+          "type": "string",
+          "enum": [
+            "fast",
+            "balanced",
+            "quality"
+          ]
+        },
+        {
+          "name": "seed",
+          "type": "integer"
+        },
+        {
+          "name": "num_images",
+          "type": "integer"
+        },
+        {
+          "name": "output_format",
+          "type": "string",
+          "enum": [
+            "png",
+            "jpeg"
+          ]
+        },
+        {
+          "name": "return_base64",
+          "type": "boolean"
+        }
       ],
       "output": "PNG/JPEG URL hoặc base64",
       "credit_cost": {
@@ -340,31 +575,63 @@
       "purpose": "Đổi aspect ratio bằng phân tích nội dung, tự quyết định crop hoặc expand/outpaint để đạt khung hình mới.",
       "use_case": "Đổi aspect ratio bằng crop/outpaint thông minh.",
       "required": [
-        "image",
-        "aspect_ratio"
+        {
+          "name": "image",
+          "type": "string",
+          "format": "image_url_or_base64"
+        },
+        {
+          "name": "aspect_ratio",
+          "type": "string",
+          "enum": [
+            "21:9",
+            "1:1",
+            "4:3",
+            "3:2",
+            "2:3",
+            "5:4",
+            "4:5",
+            "3:4",
+            "16:9",
+            "9:16"
+          ]
+        }
       ],
       "optional": [
-        "resolution",
-        "generation_mode",
-        "num_images",
-        "seed",
-        "output_format",
-        "return_base64"
+        {
+          "name": "resolution",
+          "type": "string"
+        },
+        {
+          "name": "generation_mode",
+          "type": "string",
+          "enum": [
+            "fast",
+            "balanced",
+            "quality"
+          ]
+        },
+        {
+          "name": "num_images",
+          "type": "integer"
+        },
+        {
+          "name": "seed",
+          "type": "integer"
+        },
+        {
+          "name": "output_format",
+          "type": "string",
+          "enum": [
+            "png",
+            "jpeg"
+          ]
+        },
+        {
+          "name": "return_base64",
+          "type": "boolean"
+        }
       ],
-      "param_values": {
-        "supported_aspect_ratios": [
-          "21:9",
-          "1:1",
-          "4:3",
-          "3:2",
-          "2:3",
-          "5:4",
-          "4:5",
-          "3:4",
-          "16:9",
-          "9:16"
-        ]
-      },
       "output": "PNG/JPEG URL hoặc base64",
       "credit_cost": {
         "fast": {
@@ -398,25 +665,40 @@
       "purpose": "Tạo video MP4 5-10 giây từ ảnh tĩnh, có chuyển động camera/model phù hợp thời trang.",
       "use_case": "Tạo video MP4 5-10 giây từ một ảnh.",
       "required": [
-        "image"
+        {
+          "name": "image",
+          "type": "string",
+          "format": "image_url_or_base64"
+        }
       ],
       "optional": [
-        "prompt",
-        "duration",
-        "resolution",
-        "end_image"
+        {
+          "name": "prompt",
+          "type": "string"
+        },
+        {
+          "name": "duration",
+          "type": "integer",
+          "enum": [
+            5,
+            10
+          ]
+        },
+        {
+          "name": "resolution",
+          "type": "string",
+          "enum": [
+            "480p",
+            "720p",
+            "1080p"
+          ]
+        },
+        {
+          "name": "end_image",
+          "type": "string",
+          "format": "image_url_or_base64"
+        }
       ],
-      "param_values": {
-        "duration": [
-          5,
-          10
-        ],
-        "resolution": [
-          "480p",
-          "720p",
-          "1080p"
-        ]
-      },
       "output": "MP4 URL",
       "credit_cost": {
         "5s": {
@@ -445,10 +727,17 @@
       "purpose": "Xóa nền ảnh và tạo transparent PNG cutout của foreground subject.",
       "use_case": "Xóa nền và trả PNG nền trong suốt.",
       "required": [
-        "image"
+        {
+          "name": "image",
+          "type": "string",
+          "format": "image_url_or_base64"
+        }
       ],
       "optional": [
-        "return_base64"
+        {
+          "name": "return_base64",
+          "type": "boolean"
+        }
       ],
       "output": "PNG URL/base64",
       "credit_cost": {
@@ -468,28 +757,65 @@
       "purpose": "Virtual try-on nhanh, nhẹ, tối ưu realtime e-commerce. Ổn định hơn và rẻ hơn Try-On Max, nhưng ít tính năng/độ phân giải hơn.",
       "use_case": "Try-on nhanh, nhẹ, phù hợp realtime e-commerce.",
       "required": [
-        "model_image",
-        "garment_image"
+        {
+          "name": "model_image",
+          "type": "string",
+          "format": "image_url_or_base64"
+        },
+        {
+          "name": "garment_image",
+          "type": "string",
+          "format": "image_url_or_base64"
+        }
       ],
       "optional": [
-        "category",
-        "segmentation_free",
-        "moderation_level",
-        "garment_photo_type",
-        "mode",
-        "seed",
-        "num_samples",
-        "output_format",
-        "return_base64"
+        {
+          "name": "category",
+          "type": "string",
+          "enum": [
+            "auto",
+            "tops",
+            "bottoms",
+            "one-pieces"
+          ]
+        },
+        {
+          "name": "segmentation_free",
+          "type": "boolean"
+        },
+        {
+          "name": "moderation_level",
+          "type": "string"
+        },
+        {
+          "name": "garment_photo_type",
+          "type": "string"
+        },
+        {
+          "name": "mode",
+          "type": "string"
+        },
+        {
+          "name": "seed",
+          "type": "integer"
+        },
+        {
+          "name": "num_samples",
+          "type": "integer"
+        },
+        {
+          "name": "output_format",
+          "type": "string",
+          "enum": [
+            "png",
+            "jpeg"
+          ]
+        },
+        {
+          "name": "return_base64",
+          "type": "boolean"
+        }
       ],
-      "param_values": {
-        "category": [
-          "auto",
-          "tops",
-          "bottoms",
-          "one-pieces"
-        ]
-      },
       "output": "PNG/JPEG URL/base64",
       "credit_cost": {
         "flat": "1 credit/output image"
@@ -517,7 +843,10 @@
       "use_case": "Kiểm tra credits hiện tại.",
       "endpoint": "GET https://api.fashn.ai/v1/credits",
       "required": [
-        "Bearer token"
+        {
+          "name": "Bearer token",
+          "type": "string"
+        }
       ],
       "output": "JSON",
       "rate_limit": "30 requests / 10 seconds",

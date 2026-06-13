@@ -15,8 +15,9 @@ ALTER TABLE public.ai_jobs
     'upscale',
     'product_to_model',
     'reframe',
-    'face_swap',
+    'face_to_model',
     'model_swap',
+    'model_create',
     'create_model',
     'image_to_video'
   ]::text[]));

@@ -5,73 +5,12 @@ import { AssetCategory, AssetType } from '../constants/asset';
 import { TryOnCategory } from '../constants/ai';
 import { getIO } from '../config/socket';
 import { buildSystemPrompt, applyPostProcessingRules } from './workflow.rules';
+import { FashnToolsService } from './fashn-tools.service';
 
-// ── Tool Registry ──────────────────────────────────────────────────────────────
-
-export const WORKFLOW_TOOLS = {
-  remove_background: {
-    inputKeys: ['image'] as string[],
-    outputType: 'image' as const,
-    estimatedCredit: 2,
-    description: 'Xóa nền ảnh, output PNG trong suốt',
-  },
-  product_to_model: {
-    inputKeys: ['product_image'] as string[],
-    outputType: 'image' as const,
-    estimatedCredit: 4,
-    description: 'Đặt sản phẩm lên người mẫu AI (thêm: face_reference, background_reference)',
-  },
-  try_on: {
-    inputKeys: ['model_image', 'garment_image'] as string[],
-    outputType: 'image' as const,
-    estimatedCredit: 2,
-    description: 'Mặc thử trang phục lên người mẫu',
-  },
-  try_on_max: {
-    inputKeys: ['product_image', 'model_image'] as string[],
-    outputType: 'image' as const,
-    estimatedCredit: 10,
-    description: 'Try-On chất lượng cao',
-  },
-  edit_image: {
-    inputKeys: ['image'] as string[],
-    outputType: 'image' as const,
-    estimatedCredit: 4,
-    description: 'Chỉnh sửa ảnh theo mô tả (yêu cầu params.prompt)',
-  },
-  reframe: {
-    inputKeys: ['image'] as string[],
-    outputType: 'image' as const,
-    estimatedCredit: 4,
-    description: 'Đổi tỷ lệ khung hình (params.aspect_ratio: "1:1", "4:3", "16:9"...)',
-  },
-  face_to_model: {
-    inputKeys: ['face_image'] as string[],
-    outputType: 'image' as const,
-    estimatedCredit: 4,
-    description: 'Tạo người mẫu từ khuôn mặt',
-  },
-  model_create: {
-    inputKeys: [] as string[],
-    outputType: 'image' as const,
-    estimatedCredit: 4,
-    description: 'Tạo người mẫu từ mô tả (yêu cầu params.prompt; tuỳ chọn: image_reference)',
-  },
-  model_swap: {
-    inputKeys: ['model_image'] as string[],
-    outputType: 'image' as const,
-    estimatedCredit: 4,
-    description: 'Đổi người mẫu trong ảnh (tuỳ chọn: face_reference)',
-  },
-  image_to_video: {
-    inputKeys: ['image'] as string[],
-    outputType: 'video' as const,
-    estimatedCredit: 12,
-    description: 'Chuyển ảnh thành video ngắn',
-  },
-} as const;
-
-export type WorkflowToolName = keyof typeof WORKFLOW_TOOLS;
+export type WorkflowToolName =
+  | 'remove_background' | 'product_to_model' | 'try_on' | 'try_on_max'
+  | 'edit_image' | 'reframe' | 'face_to_model' | 'model_create'
+  | 'model_swap' | 'image_to_video';
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -129,11 +68,12 @@ export class WorkflowPlannerService {
     const apiKey = process.env.GEMINI_API_KEY;
     if (!apiKey) throw new Error('GEMINI_API_KEY chưa được cấu hình');
 
-    const toolList = Object.entries(WORKFLOW_TOOLS).map(([name, meta]) => ({
-      name,
-      requiredImageInputs: meta.inputKeys,
-      estimatedCredit: meta.estimatedCredit,
-      description: meta.description,
+    const dbTools = await FashnToolsService.getAll();
+    const toolList = dbTools.map(t => ({
+      name: t.tool_key,
+      requiredImageInputs: t.required_inputs,
+      estimatedCredit: t.base_credit,
+      description: t.use_case ?? t.purpose ?? '',
     }));
 
     const systemPrompt = buildSystemPrompt(userInputKeys, toolList);
@@ -192,9 +132,9 @@ export class WorkflowPlannerService {
 
     planRaw.steps = applyPostProcessingRules(planRaw.steps as WorkflowStep[], userInputKeys, userMessage);
 
+    const toolMap = Object.fromEntries(dbTools.map(t => [t.tool_key, t]));
     const totalEstimatedCredit = (planRaw.steps as any[]).reduce((sum: number, s: any) => {
-      const tool = WORKFLOW_TOOLS[s.tool as WorkflowToolName];
-      return sum + (tool?.estimatedCredit ?? 0);
+      return sum + (toolMap[s.tool]?.base_credit ?? 0);
     }, 0);
 
     const plan: WorkflowPlan = {
@@ -211,7 +151,7 @@ export class WorkflowPlannerService {
 // ── Validator ──────────────────────────────────────────────────────────────────
 
 export class WorkflowValidatorService {
-  static validate(plan: WorkflowPlan, userInputKeys: string[]): ValidationResult {
+  static async validate(plan: WorkflowPlan, userInputKeys: string[]): Promise<ValidationResult> {
     const errors: string[] = [];
 
     if (!Array.isArray(plan.steps) || plan.steps.length === 0) {
@@ -221,7 +161,8 @@ export class WorkflowValidatorService {
       errors.push('Workflow tối đa 3 bước.');
     }
 
-    const validTools = new Set(Object.keys(WORKFLOW_TOOLS));
+    const toolMap = await FashnToolsService.getByToolKey();
+    const validTools = new Set(Object.keys(toolMap));
 
     plan.steps.forEach((step, i) => {
       if (!validTools.has(step.tool)) {
@@ -229,9 +170,9 @@ export class WorkflowValidatorService {
         return;
       }
 
-      const toolDef = WORKFLOW_TOOLS[step.tool as WorkflowToolName];
+      const toolDef = toolMap[step.tool];
 
-      for (const req of toolDef.inputKeys) {
+      for (const req of toolDef.required_inputs) {
         if (!(req in (step.inputs ?? {}))) {
           errors.push(`Bước ${i + 1} (${step.tool}): thiếu image input "${req}".`);
           continue;
@@ -241,7 +182,7 @@ export class WorkflowValidatorService {
       }
 
       for (const [key, ref] of Object.entries(step.inputs ?? {})) {
-        if (!toolDef.inputKeys.includes(key)) continue;
+        if (!toolDef.required_inputs.includes(key)) continue;
         const err = this.validateRef(ref, i, userInputKeys);
         if (err) errors.push(`Bước ${i + 1} (${step.tool}): input "${key}" — ${err}`);
       }
@@ -303,13 +244,14 @@ export class WorkflowExecutorService {
 
     if (wErr || !workflow) throw new Error(`Lỗi tạo workflow: ${wErr?.message}`);
 
+    const toolMap = await FashnToolsService.getByToolKey();
     const steps = params.plan.steps.map((step, i) => ({
       workflow_id: workflow.id,
       step_index: i,
       tool_name: step.tool,
       status: 'pending',
       params_json: { inputs: step.inputs ?? {}, params: step.params ?? {} },
-      credit_cost: WORKFLOW_TOOLS[step.tool as WorkflowToolName]?.estimatedCredit ?? 0,
+      credit_cost: toolMap[step.tool]?.base_credit ?? 0,
     }));
 
     const { error: stepsErr } = await db().from('ai_workflow_steps').insert(steps);
