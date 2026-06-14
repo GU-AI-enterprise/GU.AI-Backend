@@ -1,7 +1,7 @@
 import express, { Application, Request, Response, NextFunction } from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
-import morgan from 'morgan';
+import { requestLogger } from './middlewares/logger.middleware';
 import cookieParser from 'cookie-parser';
 
 import authRoutes from './routes/auth.routes';
@@ -31,10 +31,7 @@ app.use(
     contentSecurityPolicy: false, // Tắt CSP để tránh chặn Swagger UI assets
   })
 );
-// Skip logging OPTIONS preflight requests
-app.use(morgan('dev', {
-  skip: (req) => req.method === 'OPTIONS',
-}));
+app.use(requestLogger);
 
 // CORS config – CLIENT_URL có thể là danh sách cách nhau bởi dấu phẩy
 // Ví dụ: https://guai.vercel.app,https://www.guai.app

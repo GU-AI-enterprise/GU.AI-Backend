@@ -28,6 +28,8 @@ const authController = new AuthController();
  *       500:
  *         description: Lỗi máy chủ nội bộ.
  */
+router.post('/register', authController.register);
+
 router.get('/oauth/:provider', authController.signInWithOAuth);
 
 /**

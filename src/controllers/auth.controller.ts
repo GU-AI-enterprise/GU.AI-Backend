@@ -1,8 +1,42 @@
 import { Request, Response } from 'express';
 import type { Provider } from '@supabase/auth-js';
-import { supabase } from '../config/supabase';
+import { supabase, supabaseAdmin } from '../config/supabase';
 
 export class AuthController {
+  // 0. Đăng ký tài khoản (auto-confirm email, bỏ qua bước verify)
+  public async register(req: Request, res: Response): Promise<void> {
+    try {
+      const { email, password, name } = req.body;
+
+      if (!email || !password) {
+        res.status(400).json({ error: 'Email và mật khẩu là bắt buộc.' });
+        return;
+      }
+
+      if (!supabaseAdmin) {
+        res.status(500).json({ error: 'Admin client chưa được cấu hình.' });
+        return;
+      }
+
+      const { data, error } = await supabaseAdmin.auth.admin.createUser({
+        email,
+        password,
+        email_confirm: true,     // bỏ qua verify email
+        user_metadata: { name: name || '' },
+      });
+
+      if (error) {
+        const status = error.message.includes('already registered') ? 409 : 400;
+        res.status(status).json({ error: error.message });
+        return;
+      }
+
+      res.status(201).json({ message: 'Đăng ký thành công.', userId: data.user.id });
+    } catch (err: any) {
+      res.status(500).json({ error: 'Lỗi server', details: err.message });
+    }
+  }
+
   // 1. Khởi tạo OAuth flow (Redirect client tới provider)
   public async signInWithOAuth(req: Request, res: Response): Promise<void> {
     try {

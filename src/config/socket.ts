@@ -6,6 +6,25 @@ import { UserRole, hasRoleOrHigher } from '../types/role';
 
 let io: SocketIOServer | null = null;
 
+interface StaffPresenceEntry {
+  userId: string;
+  email: string;
+  role: string;
+  connectedAt: string;
+}
+// socketId → presence info (one entry per connection, not per user)
+const staffPresence = new Map<string, StaffPresenceEntry>();
+
+function broadcastStaffPresence(): void {
+  if (!io) return;
+  // Deduplicate by userId — keep the earliest connection per user
+  const byUser = new Map<string, StaffPresenceEntry>();
+  for (const entry of staffPresence.values()) {
+    if (!byUser.has(entry.userId)) byUser.set(entry.userId, entry);
+  }
+  io.to('admin').emit('staff_presence', Array.from(byUser.values()));
+}
+
 export const initializeSocket = (httpServer: HTTPServer): SocketIOServer => {
   if (io) {
     return io;
@@ -53,6 +72,27 @@ export const initializeSocket = (httpServer: HTTPServer): SocketIOServer => {
       SocketService.joinUserRoom(socket.id, socket.userId);
     }
 
+    // Track staff/admin presence — middleware already joined them to admin room
+    if (socket.userId && socket.userRole && hasRoleOrHigher(socket.userRole, UserRole.STAFF)) {
+      staffPresence.set(socket.id, {
+        userId: socket.userId,
+        email: socket.userEmail ?? '',
+        role: socket.userRole,
+        connectedAt: new Date().toISOString(),
+      });
+      broadcastStaffPresence();
+    }
+
+    // Allow client to request current presence list
+    socket.on('get_staff_presence', () => {
+      if (!socket.userRole || !hasRoleOrHigher(socket.userRole, UserRole.STAFF)) return;
+      const byUser = new Map<string, StaffPresenceEntry>();
+      for (const entry of staffPresence.values()) {
+        if (!byUser.has(entry.userId)) byUser.set(entry.userId, entry);
+      }
+      socket.emit('staff_presence', Array.from(byUser.values()));
+    });
+
     // Handle custom events
     socket.on('join-conversation', (conversationId: string) => {
       SocketService.joinConversationRoom(socket.id, conversationId);
@@ -74,6 +114,10 @@ export const initializeSocket = (httpServer: HTTPServer): SocketIOServer => {
       console.log(`🔌 Client disconnected: ${socket.id}, User: ${socket.userEmail}, reason: ${reason}`);
       if (socket.userId) {
         SocketService.leaveUserRoom(socket.id, socket.userId);
+      }
+      if (staffPresence.has(socket.id)) {
+        staffPresence.delete(socket.id);
+        broadcastStaffPresence();
       }
     });
 
