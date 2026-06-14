@@ -119,8 +119,8 @@ export class UserController {
         return;
       }
 
-      // Delete auth user
-      const { error: authDeleteError } = await supabase.auth.admin.deleteUser(
+      // Delete auth user — requires service-role key (supabaseAdmin, not anon supabase)
+      const { error: authDeleteError } = await supabaseAdmin!.auth.admin.deleteUser(
         req.user.id
       );
 

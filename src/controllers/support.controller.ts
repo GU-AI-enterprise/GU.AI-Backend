@@ -375,7 +375,8 @@ export class SupportController {
           .from('support_messages')
           .select('conversation_id')
           .eq('sender_type', SenderType.CUSTOMER)
-          .eq('is_read', false);
+          .eq('is_read', false)
+          .limit(1000);
 
         const unique = new Set((convIds ?? []).map((r: any) => r.conversation_id));
         sendSuccess(res, { data: { count: unique.size, role, conversationId: null } });

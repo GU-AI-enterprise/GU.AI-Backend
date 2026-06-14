@@ -38,14 +38,13 @@ app.use(morgan('dev', {
 
 // CORS config – CLIENT_URL có thể là danh sách cách nhau bởi dấu phẩy
 // Ví dụ: https://guai.vercel.app,https://www.guai.app
-const allowedOrigins: string[] = (
-  process.env.CLIENT_URL || 'http://localhost:3000',
+const allowedOrigins: string[] = [
+  ...(process.env.CLIENT_URL || 'http://localhost:3000').split(','),
   "https://guai.com.vn",
   "https://www.guai.com.vn",
-  "https://admin.guai.com.vn"
-)
-  .split(',')
-  .map((s) => s.trim().replace(/\/$/, '')) // Loại bỏ dấu slash / ở cuối nếu có
+  "https://admin.guai.com.vn",
+]
+  .map((s) => s.trim().replace(/\/$/, ''))
   .filter(Boolean);
 
 app.use(

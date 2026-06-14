@@ -1,3 +1,4 @@
+import { randomInt } from 'crypto';
 import { Response } from 'express';
 import { AuthRequest } from '../middlewares/auth.middleware';
 import { PayOSService } from '../services/payos.service';
@@ -37,7 +38,7 @@ async function buildPaymentLink(params: {
   orderCode: number; transactionId: string;
 }> {
   const { userId, packageId, amount, pkgName, pkgCreditAmount, pkgBonusCredit } = params;
-  const orderCode = parseInt(Date.now().toString().slice(-9));
+  const orderCode = randomInt(100_000_000, 999_999_999);
 
   const { data: tx, error: txErr } = await supabaseAdmin!
     .from('transactions')

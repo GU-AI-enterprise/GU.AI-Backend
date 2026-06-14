@@ -186,8 +186,8 @@ class FashnService {
 
   // ── Core: poll until completed or timeout ────────────────────────────────────
 
-  private async pollUntilDone(predictionId: string): Promise<string> {
-    while (true) {
+  private async pollUntilDone(predictionId: string, maxAttempts = 120): Promise<string> {
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
       await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
 
       const res = await fetch(`${FASHN_BASE_URL}/status/${predictionId}`, {
@@ -223,6 +223,7 @@ class FashnService {
         throw new Error(`Fashn ${name}: ${msg}`);
       }
     }
+    throw new Error(`Fashn job ${predictionId} timed out after ${(maxAttempts * POLL_INTERVAL_MS) / 1000}s`);
   }
 
   // ── Virtual Try-On v1.6 ──────────────────────────────────────────────────────

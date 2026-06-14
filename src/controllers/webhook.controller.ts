@@ -31,6 +31,13 @@ interface FashnWebhookPayload {
 
 export class WebhookController {
   public async fashn(req: Request, res: Response): Promise<void> {
+    // Verify shared secret to reject forged webhook calls
+    const secret = process.env.FASHN_WEBHOOK_SECRET;
+    if (secret && req.query.token !== secret) {
+      res.status(401).json({ error: 'Unauthorized' });
+      return;
+    }
+
     // Acknowledge immediately so Fashn doesn't retry
     res.status(200).json({ received: true });
 
@@ -92,8 +99,8 @@ export class WebhookController {
       });
 
       await CreditService.linkAssetToJob(jobId, asset.id, AssetRole.OUTPUT);
-      await CreditService.updateAIJob(jobId, AIJobStatus.COMPLETED);
       await CreditService.deductCredit(userId, cost, description, jobId);
+      await CreditService.updateAIJob(jobId, AIJobStatus.COMPLETED);
 
       SocketService.emitAIJobUpdate(userId, {
         jobId,

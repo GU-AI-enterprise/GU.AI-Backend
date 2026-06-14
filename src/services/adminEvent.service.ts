@@ -53,8 +53,10 @@ export class AdminEventService {
     recentEvents.unshift(fullEvent);
     if (recentEvents.length > MAX_MEM) recentEvents.pop();
 
-    // Persist to activity_logs (fire-and-forget)
-    this.persistToDB(fullEvent);
+    // Persist to activity_logs (fire-and-forget, errors are non-fatal)
+    this.persistToDB(fullEvent).catch((err) => {
+      console.warn('[AdminEventService] persistToDB error:', err?.message);
+    });
 
     // Socket.IO push to admins room
     try {

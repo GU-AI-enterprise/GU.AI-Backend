@@ -2,6 +2,7 @@ import { Server as SocketIOServer } from 'socket.io';
 import { Server as HTTPServer } from 'http';
 import { socketAuthMiddleware, AuthenticatedSocket } from '../middlewares/socket.middleware';
 import { SocketService } from '../services/socket.service';
+import { UserRole, hasRoleOrHigher } from '../types/role';
 
 let io: SocketIOServer | null = null;
 
@@ -62,6 +63,10 @@ export const initializeSocket = (httpServer: HTTPServer): SocketIOServer => {
     });
 
     socket.on('join-admin', () => {
+      if (!socket.userRole || !hasRoleOrHigher(socket.userRole, UserRole.STAFF)) {
+        console.warn(`[Socket] join-admin rejected for ${socket.userEmail} (role: ${socket.userRole})`);
+        return;
+      }
       SocketService.joinAdminRoom(socket.id);
     });
 

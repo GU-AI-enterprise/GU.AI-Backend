@@ -137,24 +137,37 @@ export class AdminController {
         return;
       }
 
-      const { data, error } = await supabaseAdmin.from('users').select('role, status');
+      const [
+        { count: total, error: e1 },
+        { count: active },
+        { count: locked },
+        { count: customer },
+        { count: staff },
+        { count: admin },
+      ] = await Promise.all([
+        supabaseAdmin.from('users').select('*', { count: 'exact', head: true }),
+        supabaseAdmin.from('users').select('*', { count: 'exact', head: true }).eq('status', 'active'),
+        supabaseAdmin.from('users').select('*', { count: 'exact', head: true }).eq('status', 'locked'),
+        supabaseAdmin.from('users').select('*', { count: 'exact', head: true }).eq('role', 'customer'),
+        supabaseAdmin.from('users').select('*', { count: 'exact', head: true }).eq('role', 'staff'),
+        supabaseAdmin.from('users').select('*', { count: 'exact', head: true }).eq('role', 'admin'),
+      ]);
 
-      if (error) {
-        res.status(500).json({ success: false, error: error.message });
+      if (e1) {
+        res.status(500).json({ success: false, error: e1.message });
         return;
       }
 
-      const users = data || [];
       res.json({
         success: true,
         data: {
-          total: users.length,
-          active: users.filter((u) => u.status === 'active').length,
-          locked: users.filter((u) => u.status === 'locked').length,
+          total:  total  ?? 0,
+          active: active ?? 0,
+          locked: locked ?? 0,
           byRole: {
-            customer: users.filter((u) => u.role === 'customer').length,
-            staff: users.filter((u) => u.role === 'staff').length,
-            admin: users.filter((u) => u.role === 'admin').length,
+            customer: customer ?? 0,
+            staff:    staff    ?? 0,
+            admin:    admin    ?? 0,
           },
         },
       });

@@ -83,8 +83,8 @@ async function runInBackground(params: {
     });
 
     await CreditService.linkAssetToJob(jobId, asset.id, AssetRole.OUTPUT);
-    await CreditService.updateAIJob(jobId, AIJobStatus.COMPLETED);
     await CreditService.deductCredit(userId, actualCost, description, jobId);
+    await CreditService.updateAIJob(jobId, AIJobStatus.COMPLETED);
 
     SocketService.emitAIJobUpdate(userId, {
       jobId,
@@ -141,7 +141,10 @@ async function scheduleJob(params: {
 
   if (serverUrl) {
     try {
-      const webhookUrl = `${serverUrl}/api/webhooks/fashn`;
+      const webhookSecret = process.env.FASHN_WEBHOOK_SECRET;
+      const webhookUrl = webhookSecret
+        ? `${serverUrl}/api/webhooks/fashn?token=${encodeURIComponent(webhookSecret)}`
+        : `${serverUrl}/api/webhooks/fashn`;
       const { predictionId, fashnCreditsUsed } = await fashnService.submitJob(modelName, {
         ...inputs,
         webhook_url: webhookUrl,

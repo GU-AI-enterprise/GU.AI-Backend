@@ -19,7 +19,7 @@ async function getOrCreateUserRecord(user: any) {
   // Thử lấy user record
   const { data: existingUser, error: fetchError } = await supabaseAdmin
     .from('users')
-    .select('role, id')
+    .select('role, id, status')
     .eq('id', user.id)
     .single();
 
@@ -47,7 +47,7 @@ async function getOrCreateUserRecord(user: any) {
       throw new Error(`Failed to create user record: ${insertError.message}`);
     }
 
-    return { id: user.id, role: 'customer' };
+    return { id: user.id, role: 'customer', status: 'active' };
   }
 
   const errorMessage = (fetchError as any)?.message || 'Unknown database error';
@@ -77,6 +77,11 @@ export const requireAuth = async (req: AuthRequest, res: Response, next: NextFun
 
     if (!isValidRole(userRecord.role)) {
       res.status(401).json({ error: 'User role not found or invalid.' });
+      return;
+    }
+
+    if (userRecord.status === 'locked') {
+      res.status(403).json({ error: 'Tài khoản đã bị khóa. Vui lòng liên hệ hỗ trợ.' });
       return;
     }
 
