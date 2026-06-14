@@ -5,6 +5,8 @@ import type { WorkflowStep } from './workflow.service';
 interface ToolMeta {
   name: string;
   requiredImageInputs: readonly string[];
+  optionalImageInputs?: readonly string[];
+  supportedParams?: string[];
   estimatedCredit: number;
   description: string;
 }
@@ -71,10 +73,18 @@ ${JSON.stringify(toolList, null, 2)}
 
 ## Lưu ý quan trọng
 - inputs chứa tham chiếu ảnh: "$<user_key>" hoặc "$step_N_output"
-- params chứa text (prompt, aspect_ratio, category...)
+- params chứa text/số: chỉ dùng params có trong "supportedParams" của tool — không bao giờ tự bịa params ngoài danh sách
 - Tối đa 3 bước
 - "xóa nền" → bước đầu PHẢI là remove_background
-- Nếu chưa rõ yêu cầu hoặc muốn xác nhận: hỏi tự nhiên, KHÔNG tạo JSON`;
+- Nếu chưa rõ yêu cầu hoặc muốn xác nhận: hỏi tự nhiên, KHÔNG tạo JSON
+
+## Quy tắc điền params.prompt (QUAN TRỌNG)
+- Nếu tool có "prompt" trong supportedParams VÀ user mô tả kết quả mong muốn (người mẫu, style, background, ethnic, gender...): PHẢI craft prompt tiếng Anh chuyên nghiệp và đặt vào params.prompt.
+- Prompt phải mô tả đầy đủ: đặc điểm người mẫu (giới tính, dáng người, sắc tộc nếu có), trang phục, tư thế, background, ánh sáng — bất kỳ chi tiết nào user đề cập.
+- KHÔNG đặt các mô tả như gender/ethnicity/pose/background thành params riêng — chúng không phải params hợp lệ, hãy gộp tất cả vào prompt.
+- "reason" chỉ là giải thích ngắn tiếng Việt cho user, KHÔNG phải nội dung prompt API.
+- Ví dụ đúng: params: { "prompt": "African male model, athletic build, standing naturally looking at camera, urban street background, natural lighting" }
+- Ví dụ sai: params: { "gender": "male", "ethnicity": "African", "pose": "standing" }`;
 }
 
 // ── Post-Processing Rules ──────────────────────────────────────────────────────
