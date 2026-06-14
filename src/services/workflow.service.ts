@@ -73,7 +73,7 @@ export class WorkflowPlannerService {
       name: t.tool_key,
       requiredImageInputs: t.required_inputs,
       optionalImageInputs: t.optional_inputs,
-      supportedParams: (t.param_schema ?? []).map((p: { name: string }) => p.name),
+      paramSchema: t.param_schema ?? [],
       estimatedCredit: t.base_credit,
       description: t.use_case ?? t.purpose ?? '',
     }));

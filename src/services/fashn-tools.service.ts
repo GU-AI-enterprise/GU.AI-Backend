@@ -20,6 +20,7 @@ export interface FashnToolMeta {
   base_credit: number;
   use_case: string | null;
   purpose: string | null;
+  resolution_options: string[];  // e.g. ['1k','2k','4k'] or ['480p','720p','1080p']; [] = no resolution param
 }
 
 let _cache: FashnToolMeta[] | null = null;
@@ -37,7 +38,7 @@ export class FashnToolsService {
 
     const { data, error } = await db()
       .from('fashn_tools')
-      .select('tool_key, model_name, display_name, output_type, required_inputs, optional_inputs, param_schema, base_credit, use_case, purpose')
+      .select('tool_key, model_name, display_name, output_type, required_inputs, optional_inputs, param_schema, base_credit, use_case, purpose, resolution_options')
       .eq('is_active', true)
       .order('display_order');
 

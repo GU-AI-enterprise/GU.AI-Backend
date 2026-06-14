@@ -147,7 +147,8 @@
         },
         {
           "name": "resolution",
-          "type": "string"
+          "type": "string",
+          "enum": ["1k", "2k", "4k"]
         },
         {
           "name": "generation_mode",
@@ -243,7 +244,8 @@
         },
         {
           "name": "resolution",
-          "type": "string"
+          "type": "string",
+          "enum": ["1k", "2k", "4k"]
         },
         {
           "name": "generation_mode",
@@ -335,7 +337,8 @@
         },
         {
           "name": "resolution",
-          "type": "string"
+          "type": "string",
+          "enum": ["1k", "2k", "4k"]
         },
         {
           "name": "generation_mode",
@@ -423,7 +426,8 @@
         },
         {
           "name": "resolution",
-          "type": "string"
+          "type": "string",
+          "enum": ["1k", "2k", "4k"]
         },
         {
           "name": "generation_mode",
@@ -511,7 +515,8 @@
         },
         {
           "name": "resolution",
-          "type": "string"
+          "type": "string",
+          "enum": ["1k", "2k", "4k"]
         },
         {
           "name": "generation_mode",
@@ -600,7 +605,8 @@
       "optional": [
         {
           "name": "resolution",
-          "type": "string"
+          "type": "string",
+          "enum": ["1k", "2k", "4k"]
         },
         {
           "name": "generation_mode",
