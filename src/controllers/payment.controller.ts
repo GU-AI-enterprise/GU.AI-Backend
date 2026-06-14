@@ -28,7 +28,7 @@ async function upgradePlanType(userId: string, grantsPlanType: string | null): P
 /** Shared PayOS link creation — returns controller response data */
 async function buildPaymentLink(params: {
   userId: string;
-  packageId: string;
+  packageId: string | null;
   amount: number;
   pkgName: string;
   pkgCreditAmount: number;
@@ -45,6 +45,7 @@ async function buildPaymentLink(params: {
     .insert({
       user_id: userId, package_id: packageId, provider: 'payos',
       amount, status: 'pending', provider_transaction_id: String(orderCode),
+      credit_amount: pkgCreditAmount, bonus_credit: pkgBonusCredit,
     })
     .select('id').single();
   if (txErr || !tx) throw new Error('Lỗi tạo giao dịch');
@@ -155,27 +156,10 @@ export class PaymentController {
       const ratePerCredit = Math.round(TOPUP_BASE_RATE * (1 - discountPct / 100));
       const totalAmount   = ratePerCredit * creditAmount;
 
-      // Create a one-off package so the DB trigger knows how many credits to grant
-      const { data: pkg, error: pkgErr } = await supabaseAdmin!
-        .from('credit_packages')
-        .insert({
-          name: `Top-up ${creditAmount} credits`,
-          price: totalAmount,
-          credit_amount: creditAmount,
-          bonus_credit: 0,
-          is_active: false, // hidden from package list
-          sort_order: 99,
-        })
-        .select('id, name, credit_amount, bonus_credit').single();
-
-      if (pkgErr || !pkg) {
-        res.status(500).json({ success: false, error: 'Lỗi tạo gói top-up' });
-        return;
-      }
-
       const data = await buildPaymentLink({
-        userId, packageId: pkg.id, amount: totalAmount,
-        pkgName: pkg.name, pkgCreditAmount: pkg.credit_amount, pkgBonusCredit: pkg.bonus_credit,
+        userId, packageId: null, amount: totalAmount,
+        pkgName: `Top-up ${creditAmount} credits`,
+        pkgCreditAmount: creditAmount, pkgBonusCredit: 0,
       });
 
       res.json({ success: true, data });
@@ -260,7 +244,7 @@ export class PaymentController {
       const { orderCode } = req.params;
 
       const { data: tx, error: txErr } = await supabaseAdmin!
-        .from('transactions').select('id, status, user_id, package_id, amount')
+        .from('transactions').select('id, status, user_id, package_id, amount, credit_amount, bonus_credit')
         .eq('provider_transaction_id', orderCode).eq('user_id', userId).single();
 
       if (txErr || !tx) { res.status(404).json({ success: false, error: 'Không tìm thấy giao dịch' }); return; }
@@ -277,12 +261,17 @@ export class PaymentController {
         return;
       }
 
-      const { data: pkg } = await supabaseAdmin!
-        .from('credit_packages').select('name, credit_amount, bonus_credit, grants_plan_type')
-        .eq('id', tx.package_id).single();
+      const totalCredits = (tx.credit_amount ?? 0) + (tx.bonus_credit ?? 0);
 
-      const totalCredits = (pkg?.credit_amount ?? 0) + (pkg?.bonus_credit ?? 0);
-      const packageName  = pkg?.name ?? 'Credit Package';
+      let packageName    = `Top-up ${totalCredits} credits`;
+      let grantsPlanType: string | null = null;
+      if (tx.package_id) {
+        const { data: pkg } = await supabaseAdmin!
+          .from('credit_packages').select('name, grants_plan_type')
+          .eq('id', tx.package_id).single();
+        packageName    = pkg?.name ?? packageName;
+        grantsPlanType = pkg?.grants_plan_type ?? null;
+      }
 
       const { data: claimed } = await supabaseAdmin!.from('transactions')
         .update({ status: 'success', paid_at: new Date().toISOString(), updated_at: new Date().toISOString() })
@@ -294,14 +283,13 @@ export class PaymentController {
         return;
       }
 
-      // Upgrade plan_type if this package grants one
-      await upgradePlanType(userId, pkg?.grants_plan_type ?? null);
+      await upgradePlanType(userId, grantsPlanType);
 
       const { data: updatedUser } = await supabaseAdmin!.from('users').select('current_credit').eq('id', userId).single();
       const newBalance = updatedUser?.current_credit ?? 0;
 
-      const creditBreakdown = pkg?.bonus_credit
-        ? `${pkg.credit_amount.toLocaleString()} + ${pkg.bonus_credit.toLocaleString()} bonus`
+      const creditBreakdown = tx.bonus_credit
+        ? `${(tx.credit_amount ?? 0).toLocaleString()} + ${tx.bonus_credit.toLocaleString()} bonus`
         : `${totalCredits.toLocaleString()}`;
       await NotificationService.create({
         userId, type: NotificationType.PAYMENT, priority: NotificationPriority.HIGH,
