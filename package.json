@@ -21,6 +21,7 @@
   "homepage": "https://github.com/GU-AI-enterprise/GU.AI-Backend#readme",
   "dependencies": {
     "@supabase/supabase-js": "^2.106.0",
+    "ws": "^8.18.0",
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.6",
     "dotenv": "^17.4.2",
@@ -37,6 +38,7 @@
   },
   "devDependencies": {
     "@types/cookie-parser": "^1.4.10",
+    "@types/ws": "^8.5.14",
     "@types/cors": "^2.8.19",
     "@types/express": "^5.0.6",
     "@types/morgan": "^1.9.10",
