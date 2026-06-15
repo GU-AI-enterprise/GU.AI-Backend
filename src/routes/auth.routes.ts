@@ -29,6 +29,7 @@ const authController = new AuthController();
  *         description: Lỗi máy chủ nội bộ.
  */
 router.post('/register', authController.register);
+router.post('/resend-verification', authController.resendVerification);
 
 router.get('/oauth/:provider', authController.signInWithOAuth);
 
