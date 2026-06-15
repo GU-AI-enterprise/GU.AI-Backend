@@ -49,6 +49,7 @@ jobs:
             fi
 
             cd "$APP_DIR"
+            git remote set-url origin "https://x-access-token:${GIT_TOKEN}@github.com/${REPO}.git"
             git fetch --all
             git reset --hard origin/main
 
