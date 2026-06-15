@@ -92,7 +92,7 @@ app.use('/api/workflow', workflowRoutes);
 
 // Root
 app.get('/', (_req: Request, res: Response) => {
-  res.json({ message: 'Hello from GU.AI 👋', status: 'ok' });
+  res.json({ message: 'Hello from GU.AI CI/CD👋', status: 'ok' });
 });
 
 // Health Check
