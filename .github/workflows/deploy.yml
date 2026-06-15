@@ -1,0 +1,58 @@
+name: CI / CD — Backend
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  # ────────────────────────────────────────────────────────────────────────────
+  # CI: type-check & compile trên GitHub runner
+  # Chạy cho cả push lẫn pull_request
+  # ────────────────────────────────────────────────────────────────────────────
+  ci:
+    name: Type-check & Build
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Compile TypeScript
+        run: npm run build   # = tsc → nếu lỗi type thì dừng tại đây
+
+  # ────────────────────────────────────────────────────────────────────────────
+  # CD: deploy lên server — chỉ chạy sau khi CI pass, và chỉ khi push main
+  # ────────────────────────────────────────────────────────────────────────────
+  deploy:
+    name: Deploy to production
+    needs: ci
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+
+    steps:
+      - name: SSH & deploy
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          password: ${{ secrets.SERVER_PASSWORD }}
+          command_timeout: 10m
+          script: |
+            set -e
+            cd ~/apps/guai-backend
+            git fetch --all
+            git reset --hard origin/main
+            npm ci
+            npm run build
+            pm2 restart guai-backend \
+              || pm2 start dist/server.js --name guai-backend --env-file .env
+            pm2 save

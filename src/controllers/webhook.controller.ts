@@ -5,6 +5,7 @@ import { SocketService } from '../services/socket.service';
 import { AdminEventService } from '../services/adminEvent.service';
 import { PayOSService } from '../services/payos.service';
 import { NotificationService } from '../services/notification.service';
+import { EmailService } from '../services/email.service';
 import { NotificationType, NotificationPriority } from '../constants/notification';
 import { supabaseAdmin } from '../config/supabase';
 import { AIJobStatus } from '../constants/ai';
@@ -195,7 +196,7 @@ export class WebhookController {
       // DO NOT insert credit_ledger manually — that would double the credit.
       const { data: updatedUser } = await supabaseAdmin!
         .from('users')
-        .select('current_credit')
+        .select('current_credit, email, name')
         .eq('id', tx.user_id)
         .single();
       const newBalance = updatedUser?.current_credit ?? 0;
@@ -225,6 +226,21 @@ export class WebhookController {
           credits: totalCredits,
         },
       });
+
+      // Send bill email — non-blocking
+      if (updatedUser?.email) {
+        EmailService.sendPaymentBillEmail({
+          to: updatedUser.email,
+          name: updatedUser.name || '',
+          orderCode,
+          packageName,
+          amount: tx.amount ?? 0,
+          creditAmount: pkg?.credit_amount ?? totalCredits,
+          bonusCredit: pkg?.bonus_credit ?? 0,
+          newBalance,
+          paidAt: new Date().toISOString(),
+        });
+      }
 
       console.log(`[WebhookController] PayOS: user=${tx.user_id} +${totalCredits} credits (order=${orderCode})`);
     } catch (err: any) {

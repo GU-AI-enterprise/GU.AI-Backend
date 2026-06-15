@@ -3,6 +3,7 @@ import { Response } from 'express';
 import { AuthRequest } from '../middlewares/auth.middleware';
 import { PayOSService } from '../services/payos.service';
 import { NotificationService } from '../services/notification.service';
+import { EmailService } from '../services/email.service';
 import { NotificationType, NotificationPriority } from '../constants/notification';
 import { supabaseAdmin } from '../config/supabase';
 import { AdminEventService } from '../services/adminEvent.service';
@@ -285,7 +286,7 @@ export class PaymentController {
 
       await upgradePlanType(userId, grantsPlanType);
 
-      const { data: updatedUser } = await supabaseAdmin!.from('users').select('current_credit').eq('id', userId).single();
+      const { data: updatedUser } = await supabaseAdmin!.from('users').select('current_credit, email, name').eq('id', userId).single();
       const newBalance = updatedUser?.current_credit ?? 0;
 
       const creditBreakdown = tx.bonus_credit
@@ -304,6 +305,21 @@ export class PaymentController {
         userId,
         metadata: { transactionId: tx.id, status: 'success', paid_at: new Date().toISOString(), amount: tx.amount, credits: totalCredits },
       });
+
+      // Send bill email — non-blocking (webhook may already have sent it, but atomic claim guarantees only one path runs)
+      if (updatedUser?.email) {
+        EmailService.sendPaymentBillEmail({
+          to: updatedUser.email,
+          name: updatedUser.name || '',
+          orderCode: req.params.orderCode,
+          packageName,
+          amount: tx.amount ?? 0,
+          creditAmount: tx.credit_amount ?? totalCredits,
+          bonusCredit: tx.bonus_credit ?? 0,
+          newBalance,
+          paidAt: new Date().toISOString(),
+        });
+      }
 
       const { data: freshUser } = await supabaseAdmin!.from('users').select('plan_type').eq('id', userId).single();
       res.json({ success: true, newBalance, credits: totalCredits, planType: freshUser?.plan_type ?? null });
