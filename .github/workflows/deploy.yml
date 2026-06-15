@@ -7,31 +7,18 @@ on:
     branches: [main]
 
 jobs:
-  # ────────────────────────────────────────────────────────────────────────────
-  # CI: type-check & compile trên GitHub runner
-  # Chạy cho cả push lẫn pull_request
-  # ────────────────────────────────────────────────────────────────────────────
   ci:
     name: Type-check & Build
     runs-on: ubuntu-latest
-
     steps:
       - uses: actions/checkout@v4
-
       - uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: npm
+      - run: npm ci
+      - run: npm run build
 
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Compile TypeScript
-        run: npm run build   # = tsc → nếu lỗi type thì dừng tại đây
-
-  # ────────────────────────────────────────────────────────────────────────────
-  # CD: deploy lên server — chỉ chạy sau khi CI pass, và chỉ khi push main
-  # ────────────────────────────────────────────────────────────────────────────
   deploy:
     name: Deploy to production
     needs: ci
@@ -46,13 +33,28 @@ jobs:
           username: ${{ secrets.SERVER_USER }}
           password: ${{ secrets.SERVER_PASSWORD }}
           command_timeout: 10m
+          envs: GIT_TOKEN
+          env:
+            GIT_TOKEN: ${{ secrets.GIT_TOKEN }}
           script: |
             set -e
-            cd ~/apps/guai-backend
+
+            APP_DIR=~/guai-enterprise/GU.AI-Backend
+            REPO="GU-AI-enterprise/GU.AI-Backend"
+
+            # Clone lần đầu nếu chưa có, ngược lại chỉ pull
+            if [ ! -d "$APP_DIR/.git" ]; then
+              mkdir -p ~/apps
+              git clone "https://x-access-token:${GIT_TOKEN}@github.com/${REPO}.git" "$APP_DIR"
+            fi
+
+            cd "$APP_DIR"
             git fetch --all
             git reset --hard origin/main
+
             npm ci
             npm run build
+
             pm2 restart guai-backend \
               || pm2 start dist/server.js --name guai-backend --env-file .env
             pm2 save
