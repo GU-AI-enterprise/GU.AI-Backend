@@ -9,7 +9,7 @@ if (!supabaseUrl || !supabaseAnonKey) {
 }
 
 const supabaseOptions = {
-  realtime: { transport: ws },
+  realtime: { transport: ws as any },
 };
 
 // Khởi tạo Supabase Client
