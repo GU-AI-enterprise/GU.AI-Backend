@@ -30,10 +30,12 @@ export const initializeSocket = (httpServer: HTTPServer): SocketIOServer => {
     return io;
   }
 
-  const allowedOrigins: string[] = (
-    process.env.CLIENT_URL || 'http://localhost:3000'
-  )
-    .split(',')
+  const allowedOrigins: string[] = [
+    ...(process.env.CLIENT_URL || 'http://localhost:3000').split(','),
+    'https://guai.com.vn',
+    'https://www.guai.com.vn',
+    'https://admin.guai.com.vn',
+  ]
     .map((s) => s.trim().replace(/\/$/, ''))
     .filter(Boolean);
 
