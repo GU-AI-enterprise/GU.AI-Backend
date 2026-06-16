@@ -10,7 +10,7 @@ pipeline {
             steps {
                 withCredentials([sshUserPrivateKey(credentialsId: 'ssh-key', keyFileVariable: 'SSH_KEY', usernameVariable: 'SSH_USER')]) {
                     sh """
-                        ssh -o StrictHostKeyChecking=no -i \${SSH_KEY} \${SSH_USER} '
+                        ssh -o StrictHostKeyChecking=no -i "\${SSH_KEY}" \${SSH_USER} '
                             cd \${DEPLOY_PATH}/GU.AI-Backend && git checkout main && git pull origin main
                             docker-compose build backend
                             docker-compose up -d backend
