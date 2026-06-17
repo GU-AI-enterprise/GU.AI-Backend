@@ -12,11 +12,14 @@ export class HistoryService {
       jobLimit?: number;
       jobDateFrom?: string;
       jobDateTo?: string;
+      txPage?: number;
+      txLimit?: number;
     } = {}
   ) {
     const client = this.getClient();
-    const { jobPage = 1, jobLimit = 10, jobDateFrom, jobDateTo } = opts;
+    const { jobPage = 1, jobLimit = 10, jobDateFrom, jobDateTo, txPage = 1, txLimit = 10 } = opts;
     const offset = (jobPage - 1) * jobLimit;
+    const txOffset = (txPage - 1) * txLimit;
 
     let jobQuery = client
       .from('ai_jobs')
@@ -42,12 +45,12 @@ export class HistoryService {
       throw new Error(`Lỗi khi lấy lịch sử AI jobs: ${aiJobsError.message}`);
     }
 
-    const { data: transactions, error: txError } = await client
+    const { data: transactions, error: txError, count: txCount } = await client
       .from('transactions')
-      .select(`*, package:credit_packages(name, credit_amount)`)
+      .select(`*, package:credit_packages(name, credit_amount)`, { count: 'exact' })
       .eq('user_id', userId)
       .order('created_at', { ascending: false })
-      .limit(50);
+      .range(txOffset, txOffset + txLimit - 1);
 
     if (txError) {
       throw new Error(`Lỗi khi lấy lịch sử giao dịch: ${txError.message}`);
@@ -60,6 +63,10 @@ export class HistoryService {
       aiJobsLimit: jobLimit,
       aiJobsTotalPages: Math.ceil((count ?? 0) / jobLimit),
       transactions: transactions || [],
+      transactionsTotal: txCount ?? 0,
+      transactionsPage: txPage,
+      transactionsLimit: txLimit,
+      transactionsTotalPages: Math.ceil((txCount ?? 0) / txLimit),
     };
   }
 }

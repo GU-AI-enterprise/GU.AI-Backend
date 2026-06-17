@@ -16,12 +16,16 @@ export class HistoryController {
       const jobLimit = Math.min(50, Math.max(1, parseInt(req.query.job_limit as string) || 10));
       const jobDateFrom = (req.query.job_date_from as string) || undefined;
       const jobDateTo = (req.query.job_date_to as string) || undefined;
+      const txPage = Math.max(1, parseInt(req.query.tx_page as string) || 1);
+      const txLimit = Math.min(50, Math.max(1, parseInt(req.query.tx_limit as string) || 10));
 
       const history = await HistoryService.getUserHistory(userId, {
         jobPage,
         jobLimit,
         jobDateFrom,
         jobDateTo,
+        txPage,
+        txLimit,
       });
 
       sendSuccess(res, {
