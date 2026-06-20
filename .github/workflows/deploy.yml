@@ -47,5 +47,7 @@ jobs:
 
             # Rebuild image và restart container
             cd ~/guai-enterprise
-            docker-compose build backend
+            COMPOSE_DOCKER_CLI_BUILD=1 DOCKER_BUILDKIT=1 docker-compose build backend
             docker-compose up -d backend
+
+            docker image prune -f
