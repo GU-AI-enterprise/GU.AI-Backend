@@ -30,12 +30,10 @@ export const initializeSocket = (httpServer: HTTPServer): SocketIOServer => {
     return io;
   }
 
-  const allowedOrigins: string[] = [
-    ...(process.env.CLIENT_URL || 'http://localhost:3000').split(','),
-    'https://guai.com.vn',
-    'https://www.guai.com.vn',
-    'https://admin.guai.com.vn',
-  ]
+  // Cùng allowlist với CORS của Express (app.ts) — nguồn duy nhất là CLIENT_URL.
+  const DEFAULT_ALLOWED_ORIGINS = 'http://localhost:3000,https://guai.com.vn,https://www.guai.com.vn,https://admin.guai.com.vn';
+  const allowedOrigins: string[] = (process.env.CLIENT_URL || DEFAULT_ALLOWED_ORIGINS)
+    .split(',')
     .map((s) => s.trim().replace(/\/$/, ''))
     .filter(Boolean);
 
