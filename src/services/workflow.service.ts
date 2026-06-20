@@ -112,7 +112,136 @@ export class WorkflowPlannerService {
     const data = await res.json() as any;
     const rawText: string = data.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
 
-    // Extract JSON plan from code block if present
+    return this.parsePlannerOutput(rawText, dbTools, userInputKeys, userMessage);
+  }
+
+  /**
+   * Same as `chat`, but streams Gemini's output as it's generated.
+   * `onEvent` receives `delta` chunks for the prose message as they arrive, and a single
+   * `planning` event once the embedded ```json plan block starts (so the caller can swap
+   * the UI to a "generating plan" indicator instead of streaming raw JSON text).
+   */
+  static async chatStream(
+    userMessage: string,
+    userInputKeys: string[],
+    history: ConversationTurn[],
+    modelId: PlanningModelId,
+    onEvent: (event: { type: 'delta'; text: string } | { type: 'planning' }) => void,
+  ): Promise<PlannerResponse> {
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey) throw new Error('GEMINI_API_KEY chưa được cấu hình');
+
+    const dbTools = await FashnToolsService.getAll();
+    const toolList = dbTools.map(t => ({
+      name: t.tool_key,
+      requiredImageInputs: t.required_inputs,
+      optionalImageInputs: t.optional_inputs,
+      paramSchema: t.param_schema ?? [],
+      estimatedCredit: t.base_credit,
+      description: t.use_case ?? t.purpose ?? '',
+    }));
+
+    const systemPrompt = buildSystemPrompt(userInputKeys, toolList);
+
+    const contents = [
+      ...history.map(turn => ({
+        role: turn.role === 'assistant' ? 'model' : 'user',
+        parts: [{ text: turn.text }],
+      })),
+      { role: 'user', parts: [{ text: userMessage }] },
+    ];
+
+    const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${modelId}:streamGenerateContent?alt=sse&key=${apiKey}`;
+
+    const res = await fetch(geminiUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        systemInstruction: { parts: [{ text: systemPrompt }] },
+        contents,
+        generationConfig: {
+          temperature: 0.3,
+          maxOutputTokens: 1500,
+        },
+      }),
+    });
+
+    if (!res.ok || !res.body) {
+      const err = await res.json().catch(() => ({})) as any;
+      throw new Error(`Gemini API lỗi: ${err.error?.message ?? res.status}`);
+    }
+
+    // The plan, if any, is emitted as a ```json fenced block — usually after the prose message.
+    // Hold back the last couple of characters so a fence marker split across two SSE chunks
+    // ("``" then "`json") never gets flushed to the client as stray backticks.
+    const FENCE = '```';
+    const HOLDBACK = FENCE.length - 1;
+    let fullText = '';
+    let emitted = 0;
+    let fenceFound = false;
+
+    const flushSafeText = (flushAll = false) => {
+      if (fenceFound) return;
+      const safeUpTo = flushAll ? fullText.length : Math.max(emitted, fullText.length - HOLDBACK);
+      if (safeUpTo > emitted) {
+        onEvent({ type: 'delta', text: fullText.slice(emitted, safeUpTo) });
+        emitted = safeUpTo;
+      }
+    };
+
+    const handleDelta = (delta: string) => {
+      if (fenceFound || !delta) return;
+      fullText += delta;
+      const fenceIdx = fullText.indexOf(FENCE, emitted);
+      if (fenceIdx !== -1) {
+        if (fenceIdx > emitted) onEvent({ type: 'delta', text: fullText.slice(emitted, fenceIdx) });
+        emitted = fenceIdx;
+        fenceFound = true;
+        onEvent({ type: 'planning' });
+        return;
+      }
+      flushSafeText();
+    };
+
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+
+      let sepIdx: number;
+      while ((sepIdx = buffer.indexOf('\n\n')) !== -1) {
+        const rawEvent = buffer.slice(0, sepIdx).trim();
+        buffer = buffer.slice(sepIdx + 2);
+        if (!rawEvent.startsWith('data:')) continue;
+
+        const jsonStr = rawEvent.slice(5).trim();
+        if (!jsonStr) continue;
+        try {
+          const parsed = JSON.parse(jsonStr);
+          const text = parsed.candidates?.[0]?.content?.parts?.[0]?.text;
+          if (typeof text === 'string') handleDelta(text);
+        } catch {
+          // Ignore malformed/partial SSE chunk
+        }
+      }
+    }
+
+    flushSafeText(true);
+
+    return this.parsePlannerOutput(fullText, dbTools, userInputKeys, userMessage);
+  }
+
+  /** Shared parsing: split Gemini's raw output into the prose message and the embedded plan JSON, if any. */
+  private static parsePlannerOutput(
+    rawText: string,
+    dbTools: Awaited<ReturnType<typeof FashnToolsService.getAll>>,
+    userInputKeys: string[],
+    userMessage: string,
+  ): PlannerResponse {
     const jsonMatch = rawText.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
     const messageText = rawText.replace(/```(?:json)?[\s\S]*?```/g, '').trim();
 
