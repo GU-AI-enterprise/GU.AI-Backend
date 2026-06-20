@@ -49,3 +49,5 @@ jobs:
             cd ~/guai-enterprise
             docker-compose build backend
             docker-compose up -d backend
+
+            docker image prune -f
