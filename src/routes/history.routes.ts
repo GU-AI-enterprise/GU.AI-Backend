@@ -49,7 +49,7 @@ router.use(requireAuth);
  *                         enum: [processing, completed, failed, cancelled]
  *                       provider:
  *                         type: string
- *                         enum: [fashn, nano_banana, remove_bg]
+ *                         enum: [fashn]
  *                       credit_cost:
  *                         type: integer
  *                       input_params:

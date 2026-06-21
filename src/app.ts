@@ -15,8 +15,8 @@ import adminRoutes from './routes/admin.routes';
 import notificationRoutes from './routes/notification.routes';
 import webhookRoutes from './routes/webhook.routes';
 import paymentRoutes from './routes/payment.routes';
-import chatRoutes from './routes/chat.routes';
 import workflowRoutes from './routes/workflow.routes';
+import libraryRoutes from './routes/library.routes';
 import { setupSwagger } from './config/swagger';
 import { globalLimiter, authLimiter } from './middlewares/rateLimit.middleware';
 
@@ -36,14 +36,11 @@ app.use(
 );
 app.use(requestLogger);
 
-// CORS config – CLIENT_URL có thể là danh sách cách nhau bởi dấu phẩy
-// Ví dụ: https://guai.vercel.app,https://www.guai.app
-const allowedOrigins: string[] = [
-  ...(process.env.CLIENT_URL || 'http://localhost:3000').split(','),
-  "https://guai.com.vn",
-  "https://www.guai.com.vn",
-  "https://admin.guai.com.vn",
-]
+// CORS config – CLIENT_URL là danh sách origin cách nhau bởi dấu phẩy.
+// Ví dụ: http://localhost:3000,https://guai.com.vn,https://www.guai.com.vn,https://admin.guai.com.vn
+const DEFAULT_ALLOWED_ORIGINS = 'http://localhost:3000,https://guai.com.vn,https://www.guai.com.vn,https://admin.guai.com.vn';
+const allowedOrigins: string[] = (process.env.CLIENT_URL || DEFAULT_ALLOWED_ORIGINS)
+  .split(',')
   .map((s) => s.trim().replace(/\/$/, ''))
   .filter(Boolean);
 
@@ -90,8 +87,8 @@ app.use('/api/admin', adminRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/webhooks', webhookRoutes);
 app.use('/api/payments', paymentRoutes);
-app.use('/api/chat', chatRoutes);
 app.use('/api/workflow', workflowRoutes);
+app.use('/api/library', libraryRoutes);
 
 // Root
 app.get('/', (_req: Request, res: Response) => {

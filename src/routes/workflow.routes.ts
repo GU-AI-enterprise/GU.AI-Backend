@@ -98,6 +98,68 @@ router.post('/chat', async (req: AuthRequest, res: Response) => {
 });
 
 /**
+ * POST /api/workflow/chat/stream
+ * Như /chat nhưng trả lời dạng SSE — stream từng đoạn text khi Gemini sinh ra,
+ * thay vì chờ toàn bộ response rồi mới trả về một lần.
+ */
+router.post('/chat/stream', async (req: AuthRequest, res: Response) => {
+  const { message, userInputUrls, model, history } = req.body as {
+    message: string;
+    userInputUrls?: Record<string, string>;
+    model?: string;
+    history?: ConversationTurn[];
+  };
+
+  if (!message?.trim()) {
+    res.status(400).json({ success: false, error: 'message là bắt buộc' });
+    return;
+  }
+
+  const modelId: PlanningModelId = (model && model in PLANNING_MODELS)
+    ? (model as PlanningModelId)
+    : DEFAULT_PLANNING_MODEL;
+
+  const inputUrls = userInputUrls ?? {};
+  const userInputKeys = Object.keys(inputUrls);
+
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.flushHeaders();
+
+  const send = (event: Record<string, unknown>) => {
+    res.write(`data: ${JSON.stringify(event)}\n\n`);
+  };
+
+  try {
+    const result = await WorkflowPlannerService.chatStream(
+      message.trim(),
+      userInputKeys,
+      history ?? [],
+      modelId,
+      send,
+    );
+
+    let finalMessage = result.message;
+    let finalPlan = result.plan;
+
+    if (finalPlan) {
+      const validation = await WorkflowValidatorService.validate(finalPlan, userInputKeys);
+      if (!validation.ok) {
+        finalMessage += `\n\n⚠️ Kế hoạch vừa tạo có lỗi: ${validation.errors[0]}. Hãy mô tả lại yêu cầu.`;
+        finalPlan = null;
+      }
+    }
+
+    send({ type: 'done', message: finalMessage, plan: finalPlan, model: modelId });
+  } catch (err: any) {
+    send({ type: 'error', error: err.message });
+  } finally {
+    res.end();
+  }
+});
+
+/**
  * POST /api/workflow/execute
  * User đã confirm → tạo workflow record → chạy async → trả về workflowId ngay.
  */

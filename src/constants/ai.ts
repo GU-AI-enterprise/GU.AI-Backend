@@ -21,8 +21,6 @@ export enum AIJobStatus {
 }
 
 export enum AIProvider {
-  NANO_BANANA = 'nano_banana',
-  REMOVE_BG = 'remove_bg',
   FASHN = 'fashn',
 }
 
