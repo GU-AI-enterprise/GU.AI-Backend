@@ -6,9 +6,12 @@ import {
   WorkflowExecutorService,
   PLANNING_MODELS,
   DEFAULT_PLANNING_MODEL,
+  DEFAULT_RAG_TOP_K,
+  MAX_RAG_TOP_K,
   type PlanningModelId,
   type ConversationTurn,
 } from '../services/workflow.service';
+import { WorkflowChatService } from '../services/workflow-chat.service';
 import { FashnToolsService } from '../services/fashn-tools.service';
 import { CreditService } from '../services/credit.service';
 import { supabaseAdmin } from '../config/supabase';
@@ -43,15 +46,42 @@ router.get('/models', (_req, res: Response) => {
 });
 
 /**
+ * GET /api/workflow/conversation
+ * Tải lịch sử chat đã lưu (1 luồng hội thoại liên tục mỗi user).
+ */
+router.get('/conversation', async (req: AuthRequest, res: Response) => {
+  try {
+    const turns = await WorkflowChatService.getTurns(req.user!.id);
+    res.json({ success: true, data: { turns } });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+/**
+ * DELETE /api/workflow/conversation
+ * Xoá lịch sử chat đã lưu (bắt đầu lại từ đầu).
+ */
+router.delete('/conversation', async (req: AuthRequest, res: Response) => {
+  try {
+    await WorkflowChatService.clear(req.user!.id);
+    res.json({ success: true });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+/**
  * POST /api/workflow/chat
  * Gửi tin nhắn đến Gemini. Trả về { message, plan } — plan là null nếu AI chỉ chat.
  */
 router.post('/chat', async (req: AuthRequest, res: Response) => {
-  const { message, userInputUrls, model, history } = req.body as {
+  const { message, userInputUrls, model, history, topK } = req.body as {
     message: string;
     userInputUrls?: Record<string, string>;
     model?: string;
     history?: ConversationTurn[];
+    topK?: number;
   };
 
   if (!message?.trim()) {
@@ -65,6 +95,7 @@ router.post('/chat', async (req: AuthRequest, res: Response) => {
 
   const inputUrls = userInputUrls ?? {};
   const userInputKeys = Object.keys(inputUrls);
+  const clampedTopK = Math.max(0, Math.min(Number(topK) || DEFAULT_RAG_TOP_K, MAX_RAG_TOP_K));
 
   try {
     const result = await WorkflowPlannerService.chat(
@@ -72,6 +103,7 @@ router.post('/chat', async (req: AuthRequest, res: Response) => {
       userInputKeys,
       history ?? [],
       modelId,
+      clampedTopK,
     );
 
     // If a plan was produced, validate it
@@ -79,19 +111,37 @@ router.post('/chat', async (req: AuthRequest, res: Response) => {
       const validation = await WorkflowValidatorService.validate(result.plan, userInputKeys);
       if (!validation.ok) {
         // Return the message but drop the invalid plan; let the user retry
+        const fallbackMessage = result.message
+          + `\n\n⚠️ Kế hoạch vừa tạo có lỗi: ${validation.errors[0]}. Hãy mô tả lại yêu cầu.`;
+
+        try {
+          await WorkflowChatService.appendTurn(
+            req.user!.id,
+            { role: 'user', text: message.trim() },
+            { role: 'assistant', text: fallbackMessage },
+          );
+        } catch (e: any) { console.error('[workflow/chat] Lưu lịch sử thất bại:', e.message); }
+
         return res.json({
           success: true,
-          data: {
-            message: result.message
-              + `\n\n⚠️ Kế hoạch vừa tạo có lỗi: ${validation.errors[0]}. Hãy mô tả lại yêu cầu.`,
-            plan: null,
-            model: modelId,
-          },
+          data: { message: fallbackMessage, plan: null, model: modelId },
         });
       }
     }
 
-    res.json({ success: true, data: { message: result.message, plan: result.plan, model: modelId } });
+    const assistantTurnText = result.plan ? `Tôi đã lên kế hoạch: ${result.plan.goal}` : result.message;
+    try {
+      await WorkflowChatService.appendTurn(
+        req.user!.id,
+        { role: 'user', text: message.trim() },
+        { role: 'assistant', text: assistantTurnText },
+      );
+    } catch (e: any) { console.error('[workflow/chat] Lưu lịch sử thất bại:', e.message); }
+
+    res.json({
+      success: true,
+      data: { message: result.message, plan: result.plan, model: modelId, libraryMatches: result.libraryMatches ?? [] },
+    });
   } catch (err: any) {
     res.status(500).json({ success: false, error: err.message });
   }
@@ -103,11 +153,12 @@ router.post('/chat', async (req: AuthRequest, res: Response) => {
  * thay vì chờ toàn bộ response rồi mới trả về một lần.
  */
 router.post('/chat/stream', async (req: AuthRequest, res: Response) => {
-  const { message, userInputUrls, model, history } = req.body as {
+  const { message, userInputUrls, model, history, topK } = req.body as {
     message: string;
     userInputUrls?: Record<string, string>;
     model?: string;
     history?: ConversationTurn[];
+    topK?: number;
   };
 
   if (!message?.trim()) {
@@ -121,6 +172,7 @@ router.post('/chat/stream', async (req: AuthRequest, res: Response) => {
 
   const inputUrls = userInputUrls ?? {};
   const userInputKeys = Object.keys(inputUrls);
+  const clampedTopK = Math.max(0, Math.min(Number(topK) || DEFAULT_RAG_TOP_K, MAX_RAG_TOP_K));
 
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache');
@@ -138,6 +190,7 @@ router.post('/chat/stream', async (req: AuthRequest, res: Response) => {
       history ?? [],
       modelId,
       send,
+      clampedTopK,
     );
 
     let finalMessage = result.message;
@@ -151,7 +204,16 @@ router.post('/chat/stream', async (req: AuthRequest, res: Response) => {
       }
     }
 
-    send({ type: 'done', message: finalMessage, plan: finalPlan, model: modelId });
+    const assistantTurnText = finalPlan ? `Tôi đã lên kế hoạch: ${finalPlan.goal}` : finalMessage;
+    try {
+      await WorkflowChatService.appendTurn(
+        req.user!.id,
+        { role: 'user', text: message.trim() },
+        { role: 'assistant', text: assistantTurnText },
+      );
+    } catch (e: any) { console.error('[workflow/chat/stream] Lưu lịch sử thất bại:', e.message); }
+
+    send({ type: 'done', message: finalMessage, plan: finalPlan, model: modelId, libraryMatches: result.libraryMatches ?? [] });
   } catch (err: any) {
     send({ type: 'error', error: err.message });
   } finally {
@@ -262,7 +324,7 @@ router.get('/:id', async (req: AuthRequest, res: Response) => {
 
 /**
  * POST /api/workflow/:id/cancel
- * Hủy workflow đang ở trạng thái pending_confirm.
+ * Hủy workflow đang ở trạng thái pending.
  */
 router.post('/:id/cancel', async (req: AuthRequest, res: Response) => {
   const userId = req.user!.id;
@@ -285,7 +347,7 @@ router.post('/:id/cancel', async (req: AuthRequest, res: Response) => {
     return;
   }
 
-  if (workflow.status !== 'pending_confirm') {
+  if (workflow.status !== 'pending') {
     res.status(400).json({ success: false, error: 'Chỉ hủy được workflow đang chờ xác nhận.' });
     return;
   }
