@@ -1,5 +1,7 @@
 import { Router } from 'express';
+import multer from 'multer';
 import { AdminController } from '../controllers/admin.controller';
+import { AppModelController } from '../controllers/app-model.controller';
 import { requireAuth, requireAdmin, requireStaff } from '../middlewares/auth.middleware';
 import { AdminEventService } from '../services/adminEvent.service';
 import { ImageService } from '../services/image.service';
@@ -9,6 +11,8 @@ import { supabaseAdmin } from '../config/supabase';
 
 const router = Router();
 const ctrl = new AdminController();
+const modelCtrl = new AppModelController();
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 } });
 
 router.use(requireAuth);
 
@@ -598,5 +602,12 @@ router.post('/archive/cleanup', requireAdmin, async (_req, res) => {
     sendError(res, 500, err.message);
   }
 });
+
+// ── Người mẫu của app (curated, tier-gated) ───────────────────────────────────
+router.get('/models', requireStaff, modelCtrl.adminList.bind(modelCtrl));
+router.post('/models', requireAdmin, upload.fields([{ name: 'image', maxCount: 1 }]), modelCtrl.adminCreate.bind(modelCtrl));
+router.put('/models/:id', requireAdmin, upload.fields([{ name: 'image', maxCount: 1 }]), modelCtrl.adminUpdate.bind(modelCtrl));
+router.delete('/models/:id', requireAdmin, modelCtrl.adminDelete.bind(modelCtrl));
+router.patch('/models/reorder', requireAdmin, modelCtrl.adminReorder.bind(modelCtrl));
 
 export default router;

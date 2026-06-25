@@ -36,6 +36,16 @@ export class StorageService {
     return StorageService.uploadToPath(buffer, path, mimeType, 'assets');
   }
 
+  /** Ảnh người mẫu do admin curate cho app_models — tách path khỏi ảnh user tự upload trong cùng bucket 'models'. */
+  public static async uploadAppModelImage(
+    buffer: Buffer,
+    fileName: string,
+    mimeType: string
+  ): Promise<string> {
+    const path = `app-models/${Date.now()}_${fileName}`;
+    return StorageService.uploadToPath(buffer, path, mimeType, 'models');
+  }
+
   private static async uploadToPath(
     buffer: Buffer,
     path: string,
