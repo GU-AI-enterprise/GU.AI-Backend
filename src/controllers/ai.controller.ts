@@ -901,15 +901,36 @@ export class AIController {
     }
   }
 
+  // ── Helper dùng chung cho suggest-prompt / verify-image ───────────────────────
+  // Đọc ảnh (tuỳ chọn) từ multer file field "image" hoặc body.imageUrl. Trả về null nếu không có gì.
+
+  private async resolveOptionalImage(req: AuthRequest): Promise<{ buffer: Buffer; mimeType: string } | null> {
+    const files = req.files as Record<string, Express.Multer.File[]> | undefined;
+    const file = files?.['image']?.[0];
+    const imageUrl = (req.body as { imageUrl?: string }).imageUrl;
+
+    if (file) return { buffer: file.buffer, mimeType: file.mimetype };
+    if (!imageUrl) return null;
+
+    const fetched = await fetch(imageUrl);
+    if (!fetched.ok) throw new Error('Không tải được ảnh từ imageUrl.');
+    return {
+      buffer: Buffer.from(await fetched.arrayBuffer()),
+      mimeType: fetched.headers.get('content-type') ?? 'image/jpeg',
+    };
+  }
+
   // ── POST /api/ai/suggest-prompt ───────────────────────────────────────────────
   // Tác vụ phụ: gợi ý prompt tiếng Anh cho các tool có field "prompt". Không trừ credit.
+  // Có thể kèm ảnh (multimodal) để gợi ý bám sát nội dung ảnh thực tế hơn.
 
   public async suggestPrompt(req: AuthRequest, res: Response): Promise<void> {
     try {
       const { tool, userHint } = req.body as { tool?: string; userHint?: string };
       if (!tool?.trim()) { sendError(res, 400, 'tool là bắt buộc'); return; }
 
-      const prompt = await suggestPromptService({ tool: tool.trim(), userHint: userHint ?? '' });
+      const image = await this.resolveOptionalImage(req);
+      const prompt = await suggestPromptService({ tool: tool.trim(), userHint: userHint ?? '', image: image ?? undefined });
       sendSuccess(res, { data: { prompt } });
     } catch (err: any) {
       console.error('[AIController.suggestPrompt]', err.message);
@@ -923,30 +944,15 @@ export class AIController {
 
   public async verifyImage(req: AuthRequest, res: Response): Promise<void> {
     try {
-      const { expectedType, imageUrl } = req.body as { expectedType?: string; imageUrl?: string };
+      const { expectedType } = req.body as { expectedType?: string };
       if (!expectedType || !VALID_EXPECTED_TYPES.includes(expectedType as ExpectedImageType)) {
         sendError(res, 400, `expectedType phải là một trong: ${VALID_EXPECTED_TYPES.join(', ')}.`); return;
       }
 
-      const files = req.files as Record<string, Express.Multer.File[]> | undefined;
-      const file = files?.['image']?.[0];
+      const image = await this.resolveOptionalImage(req);
+      if (!image) { sendError(res, 400, 'Cần image (file) hoặc imageUrl.'); return; }
 
-      let buffer: Buffer;
-      let mimeType: string;
-
-      if (file) {
-        buffer = file.buffer;
-        mimeType = file.mimetype;
-      } else if (imageUrl) {
-        const fetched = await fetch(imageUrl);
-        if (!fetched.ok) { sendError(res, 400, 'Không tải được ảnh từ imageUrl.'); return; }
-        buffer = Buffer.from(await fetched.arrayBuffer());
-        mimeType = fetched.headers.get('content-type') ?? 'image/jpeg';
-      } else {
-        sendError(res, 400, 'Cần image (file) hoặc imageUrl.'); return;
-      }
-
-      const result = await verifyImageService(buffer, mimeType, expectedType as ExpectedImageType);
+      const result = await verifyImageService(image.buffer, image.mimeType, expectedType as ExpectedImageType);
       sendSuccess(res, { data: result });
     } catch (err: any) {
       console.error('[AIController.verifyImage]', err.message);

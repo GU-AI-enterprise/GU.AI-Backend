@@ -54,6 +54,14 @@ export const aiLimiter = makeLimiter(
   'Quá nhiều yêu cầu AI. Vui lòng thử lại sau.'
 );
 
+// 20 req / min – tác vụ phụ Gemini (suggest-prompt, verify-image): rẻ hơn job Fashn nên
+// cho phép nhiều hơn, và tách riêng để không bị tính chung quota với job tốn credit thật.
+export const assistLimiter = makeLimiter(
+  60 * 1000,
+  20,
+  'Quá nhiều yêu cầu. Vui lòng thử lại sau.'
+);
+
 // 60 req / min – giới hạn cho chat support
 export const supportLimiter = makeLimiter(
   60 * 1000,
