@@ -91,6 +91,15 @@ export class CollectionController {
         return;
       }
 
+      const limitRaw = req.query.limit as string | undefined;
+      if (limitRaw !== undefined) {
+        const limit = Math.min(100, Math.max(1, parseInt(limitRaw, 10) || 24));
+        const offset = Math.max(0, parseInt((req.query.offset as string) || '0', 10));
+        const paged = await CollectionService.getCollectionItemsPaginated(collectionId, limit, offset);
+        sendSuccess(res, { message: 'Lấy danh sách ảnh trong bộ sưu tập thành công.', data: paged });
+        return;
+      }
+
       const items = await CollectionService.getCollectionItems(collectionId);
       sendSuccess(res, {
         message: 'Lấy danh sách ảnh trong bộ sưu tập thành công.',

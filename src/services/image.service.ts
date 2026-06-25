@@ -60,6 +60,27 @@ export class ImageService {
     return data;
   }
 
+  // 2b. Bản phân trang của getUserImages — dùng cho lazy-load (modal picker trong Studio).
+  // Lấy limit+1 dòng để biết hasMore mà không cần query count riêng.
+  public static async getUserImagesPaginated(
+    userId: string, category: string | undefined, type: string | undefined, limit: number, offset: number
+  ): Promise<{ items: any[]; hasMore: boolean }> {
+    const client = this.getClient();
+    let query = client
+      .from('assets')
+      .select('*')
+      .eq('user_id', userId)
+      .eq('status', 'active');
+    if (category) query = query.eq('category', category);
+    if (type) query = query.eq('type', type);
+    const { data, error } = await query
+      .order('created_at', { ascending: false })
+      .range(offset, offset + limit);
+    if (error) throw new Error(`Lỗi khi lấy danh sách assets: ${error.message}`);
+    const rows = data ?? [];
+    return { items: rows.slice(0, limit), hasMore: rows.length > limit };
+  }
+
   // 3. Lấy assets trong Archive (ảnh + video)
   public static async getArchivedImages(userId: string) {
     const client = this.getClient();

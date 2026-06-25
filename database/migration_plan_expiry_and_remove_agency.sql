@@ -1,0 +1,24 @@
+-- 1. Thêm cột lưu hạn gói — null = free / không có hạn (không phải đang mua gói trả phí).
+ALTER TABLE public.users ADD COLUMN IF NOT EXISTS plan_expires_at timestamptz;
+
+-- ── Kiểm tra trước khi đổi CHECK constraint (chạy tay, xem có row nào dùng 'agency' không) ──
+-- SELECT id, email, plan_type FROM public.users WHERE plan_type = 'agency';
+-- SELECT id, name, grants_plan_type FROM public.credit_packages WHERE grants_plan_type = 'agency';
+-- SELECT id, name, required_tier FROM public.app_models WHERE required_tier = 'agency';
+
+-- Nếu có row dùng 'agency' ở trên, hạ về 'pro' (hoặc tier phù hợp) TRƯỚC khi chạy phần dưới:
+-- UPDATE public.users SET plan_type = 'pro' WHERE plan_type = 'agency';
+-- UPDATE public.credit_packages SET grants_plan_type = 'pro' WHERE grants_plan_type = 'agency';
+-- UPDATE public.app_models SET required_tier = 'pro' WHERE required_tier = 'agency';
+
+-- 2. Bỏ 'agency' khỏi CHECK constraint của users.plan_type (chỉ còn free/basic/pro).
+-- Tên constraint có thể khác tuỳ lúc tạo — kiểm tra tên thật trước khi DROP:
+-- SELECT conname FROM pg_constraint WHERE conrelid = 'public.users'::regclass AND contype = 'c';
+ALTER TABLE public.users DROP CONSTRAINT IF EXISTS users_plan_type_check;
+ALTER TABLE public.users ADD CONSTRAINT users_plan_type_check
+  CHECK (plan_type IN ('free', 'basic', 'pro'));
+
+-- 3. Bỏ 'agency' khỏi CHECK constraint của app_models.required_tier.
+ALTER TABLE public.app_models DROP CONSTRAINT IF EXISTS app_models_required_tier_check;
+ALTER TABLE public.app_models ADD CONSTRAINT app_models_required_tier_check
+  CHECK (required_tier IN ('free', 'basic', 'pro'));

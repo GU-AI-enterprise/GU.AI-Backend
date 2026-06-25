@@ -4,8 +4,9 @@ import { AppModelService, AppModelInput, PlanType } from '../services/app-model.
 import { StorageService } from '../services/storage.service';
 import { supabaseAdmin } from '../config/supabase';
 import { sendSuccess, sendError } from '../utils/response';
+import { PLAN_ORDER } from '../utils/planExpiry.util';
 
-const VALID_TIERS: PlanType[] = ['free', 'basic', 'pro', 'agency'];
+const VALID_TIERS: PlanType[] = [...PLAN_ORDER];
 
 function parseTags(raw: unknown): string[] | undefined {
   if (raw === undefined) return undefined;

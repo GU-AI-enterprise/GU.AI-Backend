@@ -1,7 +1,7 @@
 import { supabaseAdmin } from '../config/supabase';
+import { PLAN_ORDER, type PlanType } from '../utils/planExpiry.util';
 
-export type PlanType = 'free' | 'basic' | 'pro' | 'agency';
-const PLAN_ORDER: PlanType[] = ['free', 'basic', 'pro', 'agency'];
+export type { PlanType };
 
 export interface AppModelRow {
   id: string;

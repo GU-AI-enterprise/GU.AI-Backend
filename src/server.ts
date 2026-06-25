@@ -5,6 +5,7 @@ import { createServer } from 'http';
 import app from './app';
 import { initializeSocket } from './config/socket';
 import { startCleanupJob } from './jobs/cleanup.job';
+import { startPlanExpiryJob } from './jobs/planExpiry.job';
 
 process.on('unhandledRejection', (reason, promise) => {
   console.error('[Server] Unhandled rejection at:', promise, 'reason:', reason);
@@ -23,6 +24,7 @@ initializeSocket(httpServer);
 
 // Start scheduled jobs
 startCleanupJob();
+startPlanExpiryJob();
 
 httpServer.listen(PORT, () => {
   console.log(`🚀 Server is running on http://localhost:${PORT}`);

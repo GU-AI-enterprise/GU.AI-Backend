@@ -8,22 +8,20 @@ import { NotificationType, NotificationPriority } from '../constants/notificatio
 import { supabaseAdmin } from '../config/supabase';
 import { AdminEventService } from '../services/adminEvent.service';
 import { UserRole } from '../types/role';
+import { computePlanRenewal } from '../utils/planExpiry.util';
 
 const TOPUP_BASE_RATE = 1580; // đ / credit (no plan)
-const PLAN_DISCOUNTS: Record<string, number> = { free: 0, basic: 5, pro: 10, agency: 15 };
-const PLAN_ORDER = ['free', 'basic', 'pro', 'agency'];
+const PLAN_DISCOUNTS: Record<string, number> = { free: 0, basic: 5, pro: 10 };
 
-/** Upgrade user's plan_type — never downgrade */
+/** Nâng cấp/gia hạn plan_type + plan_expires_at — never downgrade (xem computePlanRenewal). */
 async function upgradePlanType(userId: string, grantsPlanType: string | null): Promise<void> {
   if (!grantsPlanType) return;
-  const { data: user } = await supabaseAdmin!.from('users').select('plan_type').eq('id', userId).single();
-  const currentIdx = PLAN_ORDER.indexOf(user?.plan_type ?? 'free');
-  const newIdx     = PLAN_ORDER.indexOf(grantsPlanType);
-  if (newIdx > currentIdx) {
-    await supabaseAdmin!.from('users')
-      .update({ plan_type: grantsPlanType, updated_at: new Date().toISOString() })
-      .eq('id', userId);
-  }
+  const { data: user } = await supabaseAdmin!.from('users').select('plan_type, plan_expires_at').eq('id', userId).single();
+  const renewal = computePlanRenewal(user?.plan_type ?? null, user?.plan_expires_at ?? null, grantsPlanType);
+  if (!renewal) return;
+  await supabaseAdmin!.from('users')
+    .update({ plan_type: renewal.plan_type, plan_expires_at: renewal.plan_expires_at, updated_at: new Date().toISOString() })
+    .eq('id', userId);
 }
 
 /** Shared PayOS link creation — returns controller response data */
@@ -122,14 +120,20 @@ export class PaymentController {
     try {
       const userId = req.user!.id;
       const { data: user } = await supabaseAdmin!
-        .from('users').select('plan_type').eq('id', userId).single();
+        .from('users').select('plan_type, plan_expires_at').eq('id', userId).single();
       const planType   = user?.plan_type ?? 'free';
       const discountPct = PLAN_DISCOUNTS[planType] ?? 0;
       const ratePerCredit = Math.round(TOPUP_BASE_RATE * (1 - discountPct / 100));
 
       res.json({
         success: true,
-        data: { plan_type: planType, discount_pct: discountPct, base_rate: TOPUP_BASE_RATE, rate: ratePerCredit },
+        data: {
+          plan_type: planType,
+          plan_expires_at: user?.plan_expires_at ?? null,
+          discount_pct: discountPct,
+          base_rate: TOPUP_BASE_RATE,
+          rate: ratePerCredit,
+        },
       });
     } catch (err: any) {
       res.status(500).json({ success: false, error: err.message });
@@ -321,8 +325,12 @@ export class PaymentController {
         });
       }
 
-      const { data: freshUser } = await supabaseAdmin!.from('users').select('plan_type').eq('id', userId).single();
-      res.json({ success: true, newBalance, credits: totalCredits, planType: freshUser?.plan_type ?? null });
+      const { data: freshUser } = await supabaseAdmin!.from('users').select('plan_type, plan_expires_at').eq('id', userId).single();
+      res.json({
+        success: true, newBalance, credits: totalCredits,
+        planType: freshUser?.plan_type ?? null,
+        planExpiresAt: freshUser?.plan_expires_at ?? null,
+      });
     } catch (err: any) {
       console.error('[PaymentController] processPayment:', err.message);
       res.status(500).json({ success: false, error: err.message });

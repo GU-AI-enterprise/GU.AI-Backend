@@ -10,6 +10,7 @@ import { NotificationType, NotificationPriority } from '../constants/notificatio
 import { supabaseAdmin } from '../config/supabase';
 import { AIJobStatus } from '../constants/ai';
 import { AssetCategory, AssetRole, AssetType } from '../constants/asset';
+import { computePlanRenewal } from '../utils/planExpiry.util';
 
 export interface PendingWebhookJob {
   userId: string;
@@ -178,15 +179,13 @@ export class WebhookController {
       const totalCredits = (pkg?.credit_amount ?? 0) + (pkg?.bonus_credit ?? 0);
       const packageName = pkg?.name ?? 'Credit Package';
 
-      // Upgrade plan_type if package grants one (never downgrade)
+      // Nâng cấp/gia hạn plan_type + plan_expires_at nếu package có grants_plan_type (never downgrade)
       if (pkg?.grants_plan_type) {
-        const PLAN_ORDER = ['free', 'basic', 'pro', 'agency'];
-        const { data: userRow } = await supabaseAdmin!.from('users').select('plan_type').eq('id', tx.user_id).single();
-        const currentIdx = PLAN_ORDER.indexOf(userRow?.plan_type ?? 'free');
-        const newIdx     = PLAN_ORDER.indexOf(pkg.grants_plan_type);
-        if (newIdx > currentIdx) {
+        const { data: userRow } = await supabaseAdmin!.from('users').select('plan_type, plan_expires_at').eq('id', tx.user_id).single();
+        const renewal = computePlanRenewal(userRow?.plan_type ?? null, userRow?.plan_expires_at ?? null, pkg.grants_plan_type);
+        if (renewal) {
           await supabaseAdmin!.from('users')
-            .update({ plan_type: pkg.grants_plan_type, updated_at: new Date().toISOString() })
+            .update({ plan_type: renewal.plan_type, plan_expires_at: renewal.plan_expires_at, updated_at: new Date().toISOString() })
             .eq('id', tx.user_id);
         }
       }

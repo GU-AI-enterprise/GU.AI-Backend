@@ -159,6 +159,29 @@ export class CollectionService {
     return data.map((item: any) => item.asset).filter((a: any) => a !== null);
   }
 
+  // 4b. Bản phân trang của getCollectionItems — dùng cho lazy-load (modal picker trong Studio).
+  public static async getCollectionItemsPaginated(collectionId: string, limit: number, offset: number) {
+    const client = this.getClient();
+    const { data, error } = await client
+      .from('collection_assets')
+      .select(`
+        collection_id,
+        asset_id,
+        added_at,
+        asset:assets(*)
+      `)
+      .eq('collection_id', collectionId)
+      .order('added_at', { ascending: false })
+      .range(offset, offset + limit);
+
+    if (error) {
+      throw new Error(`Lỗi khi lấy danh sách asset trong bộ sưu tập: ${error.message}`);
+    }
+
+    const items = data.map((item: any) => item.asset).filter((a: any) => a !== null);
+    return { items: items.slice(0, limit), hasMore: items.length > limit };
+  }
+
   // 5. Xóa bộ sưu tập
   public static async deleteCollection(userId: string, collectionId: string) {
     const client = this.getClient();

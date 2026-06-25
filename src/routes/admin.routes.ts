@@ -6,6 +6,7 @@ import { requireAuth, requireAdmin, requireStaff } from '../middlewares/auth.mid
 import { AdminEventService } from '../services/adminEvent.service';
 import { ImageService } from '../services/image.service';
 import { runCleanupNow } from '../jobs/cleanup.job';
+import { downgradeExpiredPlans } from '../jobs/planExpiry.job';
 import { sendSuccess, sendError } from '../utils/response';
 import { supabaseAdmin } from '../config/supabase';
 
@@ -598,6 +599,15 @@ router.post('/archive/cleanup', requireAdmin, async (_req, res) => {
   try {
     const result = await runCleanupNow();
     sendSuccess(res, { message: `Cleanup hoàn thành — đã xóa ${result.deletedCount} ảnh hết hạn.`, data: result });
+  } catch (err: any) {
+    sendError(res, 500, err.message);
+  }
+});
+
+router.post('/plans/check-expiry', requireAdmin, async (_req, res) => {
+  try {
+    const result = await downgradeExpiredPlans();
+    sendSuccess(res, { message: `Đã hạ cấp ${result.downgradedCount} user hết hạn gói.`, data: result });
   } catch (err: any) {
     sendError(res, 500, err.message);
   }

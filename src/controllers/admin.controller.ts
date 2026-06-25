@@ -29,7 +29,7 @@ export class AdminController {
       let query = supabaseAdmin
         .from('users')
         .select(
-          'id, email, name, avatar_url, role, status, provider, plan_type, current_credit, created_at, updated_at',
+          'id, email, name, avatar_url, role, status, provider, plan_type, plan_expires_at, current_credit, created_at, updated_at',
           { count: 'exact' }
         );
 
@@ -76,7 +76,7 @@ export class AdminController {
 
       const { data: user, error } = await supabaseAdmin
         .from('users')
-        .select('id, email, name, avatar_url, role, status, provider, plan_type, current_credit, created_at, updated_at, last_login_at')
+        .select('id, email, name, avatar_url, role, status, provider, plan_type, plan_expires_at, current_credit, created_at, updated_at, last_login_at')
         .eq('id', id)
         .single();
 

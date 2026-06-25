@@ -11,6 +11,17 @@ export class ImageController {
       if (!userId) { sendError(res, 401, 'Không tìm thấy thông tin xác thực người dùng.'); return; }
       const category = req.query.category as string | undefined;
       const type = req.query.type as string | undefined;
+
+      // limit có mặt → trả về dạng phân trang { items, hasMore }; không có → giữ nguyên hành vi cũ (mảng đầy đủ)
+      const limitRaw = req.query.limit as string | undefined;
+      if (limitRaw !== undefined) {
+        const limit = Math.min(100, Math.max(1, parseInt(limitRaw, 10) || 24));
+        const offset = Math.max(0, parseInt((req.query.offset as string) || '0', 10));
+        const paged = await ImageService.getUserImagesPaginated(userId, category, type, limit, offset);
+        sendSuccess(res, { message: 'Lấy danh sách assets thành công.', data: paged });
+        return;
+      }
+
       sendSuccess(res, { message: 'Lấy danh sách assets thành công.', data: await ImageService.getUserImages(userId, category, type) });
     } catch (err: any) { sendError(res, 500, err.message); }
   }
