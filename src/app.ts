@@ -15,7 +15,6 @@ import adminRoutes from './routes/admin.routes';
 import notificationRoutes from './routes/notification.routes';
 import webhookRoutes from './routes/webhook.routes';
 import paymentRoutes from './routes/payment.routes';
-import workflowRoutes from './routes/workflow.routes';
 import libraryRoutes from './routes/library.routes';
 import { setupSwagger } from './config/swagger';
 import { globalLimiter, authLimiter } from './middlewares/rateLimit.middleware';
@@ -87,7 +86,6 @@ app.use('/api/admin', adminRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/webhooks', webhookRoutes);
 app.use('/api/payments', paymentRoutes);
-app.use('/api/workflow', workflowRoutes);
 app.use('/api/library', libraryRoutes);
 
 // Root

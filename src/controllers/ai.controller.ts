@@ -21,6 +21,12 @@ import { AssetCategory, AssetRole, AssetType } from '../constants/asset';
 import { StorageBucket } from '../services/storage.service';
 import { AdminEventService } from '../services/adminEvent.service';
 import { pendingWebhookJobs } from './webhook.controller';
+import {
+  suggestPrompt as suggestPromptService,
+  verifyImage as verifyImageService,
+  VALID_EXPECTED_TYPES,
+  type ExpectedImageType,
+} from '../services/gemini-assist.service';
 
 const VALID_CATEGORIES  = Object.values(TryOnCategory);
 const VALID_MODES       = Object.values(TryOnMode);
@@ -891,6 +897,59 @@ export class AIController {
       });
     } catch (err: any) {
       console.error('[AIController.imageToVideo]', err);
+      sendError(res, 500, err.message);
+    }
+  }
+
+  // ── POST /api/ai/suggest-prompt ───────────────────────────────────────────────
+  // Tác vụ phụ: gợi ý prompt tiếng Anh cho các tool có field "prompt". Không trừ credit.
+
+  public async suggestPrompt(req: AuthRequest, res: Response): Promise<void> {
+    try {
+      const { tool, userHint } = req.body as { tool?: string; userHint?: string };
+      if (!tool?.trim()) { sendError(res, 400, 'tool là bắt buộc'); return; }
+
+      const prompt = await suggestPromptService({ tool: tool.trim(), userHint: userHint ?? '' });
+      sendSuccess(res, { data: { prompt } });
+    } catch (err: any) {
+      console.error('[AIController.suggestPrompt]', err.message);
+      sendError(res, 500, err.message);
+    }
+  }
+
+  // ── POST /api/ai/verify-image ─────────────────────────────────────────────────
+  // Tác vụ phụ: kiểm tra nhanh ảnh đầu vào trước khi user chạy job tốn credit. Không trừ credit,
+  // không block — chỉ trả về cảnh báo để frontend hiển thị, không hard-fail.
+
+  public async verifyImage(req: AuthRequest, res: Response): Promise<void> {
+    try {
+      const { expectedType, imageUrl } = req.body as { expectedType?: string; imageUrl?: string };
+      if (!expectedType || !VALID_EXPECTED_TYPES.includes(expectedType as ExpectedImageType)) {
+        sendError(res, 400, `expectedType phải là một trong: ${VALID_EXPECTED_TYPES.join(', ')}.`); return;
+      }
+
+      const files = req.files as Record<string, Express.Multer.File[]> | undefined;
+      const file = files?.['image']?.[0];
+
+      let buffer: Buffer;
+      let mimeType: string;
+
+      if (file) {
+        buffer = file.buffer;
+        mimeType = file.mimetype;
+      } else if (imageUrl) {
+        const fetched = await fetch(imageUrl);
+        if (!fetched.ok) { sendError(res, 400, 'Không tải được ảnh từ imageUrl.'); return; }
+        buffer = Buffer.from(await fetched.arrayBuffer());
+        mimeType = fetched.headers.get('content-type') ?? 'image/jpeg';
+      } else {
+        sendError(res, 400, 'Cần image (file) hoặc imageUrl.'); return;
+      }
+
+      const result = await verifyImageService(buffer, mimeType, expectedType as ExpectedImageType);
+      sendSuccess(res, { data: result });
+    } catch (err: any) {
+      console.error('[AIController.verifyImage]', err.message);
       sendError(res, 500, err.message);
     }
   }

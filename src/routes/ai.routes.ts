@@ -940,4 +940,86 @@ router.post(
   aiController.imageToVideo.bind(aiController)
 );
 
+/**
+ * @openapi
+ * /api/ai/suggest-prompt:
+ *   post:
+ *     summary: Gợi ý prompt tiếng Anh bằng AI (tác vụ phụ, không trừ credit)
+ *     description: Dùng Gemini viết lại ý tưởng ngắn (có thể bằng tiếng Việt) thành prompt tiếng Anh cho field "prompt" của các tool.
+ *     tags:
+ *       - AI
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [tool]
+ *             properties:
+ *               tool:
+ *                 type: string
+ *                 description: Tool đang dùng (vd. product_to_model, face_to_model, edit, create_model, model_swap, try_on_max, image_to_video).
+ *               userHint:
+ *                 type: string
+ *                 description: Ý tưởng ngắn của user (có thể để trống — AI tự đề xuất).
+ *     responses:
+ *       200:
+ *         description: Prompt gợi ý.
+ *       400:
+ *         $ref: '#/components/responses/BadRequest'
+ *       401:
+ *         $ref: '#/components/responses/Unauthorized'
+ *       500:
+ *         $ref: '#/components/responses/ServerError'
+ */
+router.post('/suggest-prompt', aiController.suggestPrompt.bind(aiController));
+
+/**
+ * @openapi
+ * /api/ai/verify-image:
+ *   post:
+ *     summary: Verify ảnh đầu vào bằng AI (tác vụ phụ, không trừ credit, không block)
+ *     description: |
+ *       Kiểm tra nhanh ảnh có phù hợp với loại mong đợi không (vd. ảnh khuôn mặt phải nhìn rõ mặt người).
+ *       Chỉ trả về cảnh báo cho frontend hiển thị — không chặn người dùng chạy job.
+ *     tags:
+ *       - AI
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             required: [expectedType]
+ *             properties:
+ *               image:
+ *                 type: string
+ *                 format: binary
+ *                 description: Ảnh cần kiểm tra (file).
+ *               imageUrl:
+ *                 type: string
+ *                 description: URL ảnh (nếu không upload file).
+ *               expectedType:
+ *                 type: string
+ *                 enum: [face, product, model, background]
+ *     responses:
+ *       200:
+ *         description: Kết quả verify — { ok, issues }.
+ *       400:
+ *         $ref: '#/components/responses/BadRequest'
+ *       401:
+ *         $ref: '#/components/responses/Unauthorized'
+ *       500:
+ *         $ref: '#/components/responses/ServerError'
+ */
+router.post(
+  '/verify-image',
+  upload.fields([{ name: 'image', maxCount: 1 }]),
+  aiController.verifyImage.bind(aiController)
+);
+
 export default router;
