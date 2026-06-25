@@ -19,9 +19,10 @@ async function upgradePlanType(userId: string, grantsPlanType: string | null): P
   const { data: user } = await supabaseAdmin!.from('users').select('plan_type, plan_expires_at').eq('id', userId).single();
   const renewal = computePlanRenewal(user?.plan_type ?? null, user?.plan_expires_at ?? null, grantsPlanType);
   if (!renewal) return;
-  await supabaseAdmin!.from('users')
+  const { error } = await supabaseAdmin!.from('users')
     .update({ plan_type: renewal.plan_type, plan_expires_at: renewal.plan_expires_at, updated_at: new Date().toISOString() })
     .eq('id', userId);
+  if (error) console.error(`[PaymentController] upgradePlanType lỗi cho user=${userId}:`, error.message);
 }
 
 /** Shared PayOS link creation — returns controller response data */

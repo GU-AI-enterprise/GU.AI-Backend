@@ -22,3 +22,26 @@ ALTER TABLE public.users ADD CONSTRAINT users_plan_type_check
 ALTER TABLE public.app_models DROP CONSTRAINT IF EXISTS app_models_required_tier_check;
 ALTER TABLE public.app_models ADD CONSTRAINT app_models_required_tier_check
   CHECK (required_tier IN ('free', 'basic', 'pro'));
+
+-- ── 4. Backfill thủ công cho 1 user đã thanh toán thành công nhưng KHÔNG được nâng cấp plan_type ──
+-- (xảy ra nếu mua gói TRƯỚC khi cột plan_expires_at ở bước 1 tồn tại — webhook/processPayment
+-- update plan_type+plan_expires_at thất bại âm thầm vì cột chưa có, credit vẫn cộng bình thường
+-- do trigger riêng). Điền email, chạy SAU khi đã chạy xong bước 1-3 ở trên:
+-- WITH target_user AS (
+--   SELECT id FROM public.users WHERE email = 'EMAIL_CUA_BAN'
+-- ),
+-- latest_paid_plan AS (
+--   SELECT pkg.grants_plan_type
+--   FROM public.transactions t
+--   JOIN public.credit_packages pkg ON pkg.id = t.package_id
+--   JOIN target_user tu ON tu.id = t.user_id
+--   WHERE t.status = 'success' AND pkg.grants_plan_type IS NOT NULL AND pkg.grants_plan_type <> 'free'
+--   ORDER BY t.paid_at DESC
+--   LIMIT 1
+-- )
+-- UPDATE public.users
+-- SET plan_type = (SELECT grants_plan_type FROM latest_paid_plan),
+--     plan_expires_at = now() + interval '30 days',
+--     updated_at = now()
+-- WHERE id = (SELECT id FROM target_user)
+--   AND EXISTS (SELECT 1 FROM latest_paid_plan);

@@ -59,10 +59,12 @@ export class AppModelService {
   static async getForUser(userTier: PlanType): Promise<AppModelForUser[]> {
     const all = await this.getActive();
     const userIdx = PLAN_ORDER.indexOf(userTier);
-    return all.map((m) => ({
+    const withUnlocked = all.map((m) => ({
       ...m,
       unlocked: PLAN_ORDER.indexOf(m.required_tier) <= userIdx,
     }));
+    // Sắp xếp free → basic → pro; display_order vẫn quyết định thứ tự trong cùng 1 tier (sort ổn định).
+    return withUnlocked.sort((a, b) => PLAN_ORDER.indexOf(a.required_tier) - PLAN_ORDER.indexOf(b.required_tier));
   }
 
   // ── Admin CRUD (không cache, luôn đọc mới nhất) ─────────────────────────────

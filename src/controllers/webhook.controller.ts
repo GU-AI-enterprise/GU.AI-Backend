@@ -184,9 +184,10 @@ export class WebhookController {
         const { data: userRow } = await supabaseAdmin!.from('users').select('plan_type, plan_expires_at').eq('id', tx.user_id).single();
         const renewal = computePlanRenewal(userRow?.plan_type ?? null, userRow?.plan_expires_at ?? null, pkg.grants_plan_type);
         if (renewal) {
-          await supabaseAdmin!.from('users')
+          const { error: planErr } = await supabaseAdmin!.from('users')
             .update({ plan_type: renewal.plan_type, plan_expires_at: renewal.plan_expires_at, updated_at: new Date().toISOString() })
             .eq('id', tx.user_id);
+          if (planErr) console.error(`[WebhookController] Lỗi nâng cấp plan cho user=${tx.user_id}:`, planErr.message);
         }
       }
 
