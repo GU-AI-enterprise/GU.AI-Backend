@@ -110,6 +110,50 @@ router.post(
   aiController.verifyImage.bind(aiController)
 );
 
+/**
+ * @openapi
+ * /api/ai/studio-chat:
+ *   post:
+ *     summary: Trợ lý AI hỏi-đáp trong Studio (tác vụ phụ, không trừ credit)
+ *     description: |
+ *       Chat hỏi-đáp về cách dùng các công cụ trong Studio / cách viết prompt.
+ *       KHÔNG lập plan, KHÔNG tự chạy tool nào, KHÔNG lưu hội thoại ở server —
+ *       client tự giữ history và gửi kèm toàn bộ messages mỗi lượt gọi.
+ *     tags:
+ *       - AI
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [messages]
+ *             properties:
+ *               messages:
+ *                 type: array
+ *                 items:
+ *                   type: object
+ *                   properties:
+ *                     role: { type: string, enum: [user, assistant] }
+ *                     content: { type: string }
+ *     responses:
+ *       200:
+ *         description: Câu trả lời của trợ lý AI.
+ *       400:
+ *         $ref: '#/components/responses/BadRequest'
+ *       401:
+ *         $ref: '#/components/responses/Unauthorized'
+ *       500:
+ *         $ref: '#/components/responses/ServerError'
+ */
+router.post(
+  '/studio-chat',
+  staffBypass(assistLimiter),
+  aiController.studioChat.bind(aiController)
+);
+
 router.use(staffBypass(aiLimiter));
 
 /**

@@ -24,8 +24,10 @@ import { pendingWebhookJobs } from './webhook.controller';
 import {
   suggestPrompt as suggestPromptService,
   verifyImage as verifyImageService,
+  studioChat as studioChatService,
   VALID_EXPECTED_TYPES,
   type ExpectedImageType,
+  type StudioChatMessage,
 } from '../services/gemini-assist.service';
 
 const VALID_CATEGORIES  = Object.values(TryOnCategory);
@@ -956,6 +958,32 @@ export class AIController {
       sendSuccess(res, { data: result });
     } catch (err: any) {
       console.error('[AIController.verifyImage]', err.message);
+      sendError(res, 500, err.message);
+    }
+  }
+
+  // ── POST /api/ai/studio-chat ────────────────────────────────────────────────
+  // Trợ lý AI hỏi-đáp trong Studio: chỉ trả lời text, không lập plan/chạy tool, không lưu
+  // hội thoại ở server (client tự giữ history và gửi kèm mỗi lượt). Không trừ credit.
+
+  public async studioChat(req: AuthRequest, res: Response): Promise<void> {
+    try {
+      const { messages } = req.body as { messages?: { role?: string; content?: string }[] };
+      if (!Array.isArray(messages) || messages.length === 0) {
+        sendError(res, 400, 'messages là bắt buộc và phải là một mảng không rỗng.'); return;
+      }
+
+      const cleaned: StudioChatMessage[] = messages
+        .filter((m): m is { role: string; content: string } =>
+          !!m && (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string' && m.content.trim().length > 0)
+        .map((m) => ({ role: m.role as StudioChatMessage['role'], content: m.content.trim() }));
+
+      if (cleaned.length === 0) { sendError(res, 400, 'messages không hợp lệ.'); return; }
+
+      const reply = await studioChatService(cleaned);
+      sendSuccess(res, { data: { reply } });
+    } catch (err: any) {
+      console.error('[AIController.studioChat]', err.message);
       sendError(res, 500, err.message);
     }
   }

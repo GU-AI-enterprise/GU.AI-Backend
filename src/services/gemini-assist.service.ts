@@ -130,6 +130,54 @@ function setCachedVerify(key: string, result: VerifyImageResult): void {
   verifyImageCache.set(key, { result, expiresAt: Date.now() + VERIFY_CACHE_TTL_MS });
 }
 
+// ── Trợ lý AI Studio (chat hỏi-đáp) ───────────────────────────────────────────
+// KHÔNG phải "Trợ lý ảo" cũ đã bị bỏ (xem docs/09-tro-ly-ao-danh-gia-va-de-xuat.md):
+// đây chỉ trả lời text về cách dùng Studio, KHÔNG lập plan, KHÔNG tự chạy tool nào,
+// KHÔNG lưu hội thoại ở server — client tự giữ history và gửi kèm mỗi lượt.
+
+export interface StudioChatMessage {
+  role: 'user' | 'assistant';
+  content: string;
+}
+
+const STUDIO_CHAT_SYSTEM = `Bạn là trợ lý AI của GU.AI Studio — công cụ tạo/chỉnh ảnh & video thời trang bằng AI.
+
+Các công cụ hiện có trong Studio:
+- Virtual Try-On v1.6: thử trang phục lên ảnh người mẫu thực, nhanh, dùng cho e-commerce.
+- Try-On Max: try-on chất lượng studio, hỗ trợ 4K, dùng cho catalog/marketing.
+- Product to Model: biến ảnh sản phẩm thành ảnh người mẫu đang mặc sản phẩm, không cần ảnh người mẫu.
+- Model Swap: đổi người mẫu trong ảnh, giữ nguyên trang phục/pose/bối cảnh.
+- Face to Model: biến ảnh mặt/headshot thành avatar upper-body cho try-on.
+- Edit Image: chỉnh sửa ảnh theo mô tả tự nhiên (đổi pose, thêm phụ kiện, ánh sáng...).
+- Create Model: tạo ảnh người mẫu thời trang từ mô tả văn bản, không cần ảnh đầu vào.
+- Image to Video: biến ảnh tĩnh thành video ngắn 5-10 giây.
+- Reframe: đổi tỉ lệ khung hình ảnh bằng AI outpainting thông minh.
+- Remove Background: xóa nền ảnh, xuất PNG trong suốt.
+- Upscale: tăng độ phân giải ảnh, giữ chi tiết/texture.
+
+Nhiệm vụ: trả lời ngắn gọn, đúng trọng tâm câu hỏi của user về cách dùng các công cụ trên, cách viết prompt, hoặc nên dùng tool nào cho nhu cầu của họ. Trả lời bằng tiếng Việt (trừ khi user hỏi bằng ngôn ngữ khác), giọng thân thiện, ngắn gọn (tối đa 4-5 câu).
+
+Giới hạn quan trọng: bạn KHÔNG thể tự chạy/thực thi bất kỳ công cụ nào, KHÔNG thể upload/xử lý ảnh hộ user — chỉ hướng dẫn user tự thực hiện trên giao diện Studio. Nếu câu hỏi không liên quan đến GU.AI Studio, lịch sự từ chối và hướng user quay lại chủ đề.`;
+
+const STUDIO_CHAT_MAX_HISTORY = 12; // giới hạn context gửi lên Gemini mỗi lượt, tránh phình token
+
+export async function studioChat(messages: StudioChatMessage[]): Promise<string> {
+  const trimmed = messages.slice(-STUDIO_CHAT_MAX_HISTORY);
+  const contents = trimmed.map((m) => ({
+    role: m.role === 'user' ? 'user' : 'model',
+    parts: [{ text: m.content }],
+  }));
+
+  const data = await callGemini({
+    systemInstruction: { parts: [{ text: STUDIO_CHAT_SYSTEM }] },
+    contents,
+    generationConfig: { temperature: 0.5, maxOutputTokens: 300, thinkingConfig: { thinkingBudget: 0 } },
+  });
+
+  const text: string = data.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
+  return text.trim() || 'Xin lỗi, mình chưa có câu trả lời phù hợp. Bạn thử hỏi lại theo cách khác nhé.';
+}
+
 export async function verifyImage(
   imageBuffer: Buffer,
   mimeType: string,
