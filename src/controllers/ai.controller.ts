@@ -28,6 +28,7 @@ import {
   VALID_EXPECTED_TYPES,
   type ExpectedImageType,
   type StudioChatMessage,
+  type StudioChatImage,
 } from '../services/gemini-assist.service';
 
 const VALID_CATEGORIES  = Object.values(TryOnCategory);
@@ -968,7 +969,10 @@ export class AIController {
 
   public async studioChat(req: AuthRequest, res: Response): Promise<void> {
     try {
-      const { messages } = req.body as { messages?: { role?: string; content?: string }[] };
+      const { messages, images } = req.body as {
+        messages?: { role?: string; content?: string }[];
+        images?: { mimeType?: string; data?: string }[];
+      };
       if (!Array.isArray(messages) || messages.length === 0) {
         sendError(res, 400, 'messages là bắt buộc và phải là một mảng không rỗng.'); return;
       }
@@ -980,7 +984,14 @@ export class AIController {
 
       if (cleaned.length === 0) { sendError(res, 400, 'messages không hợp lệ.'); return; }
 
-      const reply = await studioChatService(cleaned);
+      const cleanedImages: StudioChatImage[] = Array.isArray(images)
+        ? images
+            .filter((img): img is { mimeType: string; data: string } =>
+              !!img && typeof img.mimeType === 'string' && img.mimeType.startsWith('image/') && typeof img.data === 'string' && img.data.length > 0)
+            .slice(0, 4)
+        : [];
+
+      const reply = await studioChatService(cleaned, cleanedImages);
       sendSuccess(res, { data: { reply } });
     } catch (err: any) {
       console.error('[AIController.studioChat]', err.message);

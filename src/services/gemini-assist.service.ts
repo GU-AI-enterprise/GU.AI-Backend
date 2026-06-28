@@ -140,6 +140,14 @@ export interface StudioChatMessage {
   content: string;
 }
 
+/** Ảnh user đang chuẩn bị dùng cho tác vụ — đính kèm vào lượt hỏi mới nhất để trợ lý xem trực tiếp. */
+export interface StudioChatImage {
+  mimeType: string;
+  data: string; // base64, không kèm prefix "data:..."
+}
+
+const STUDIO_CHAT_MAX_IMAGES = 4;
+
 const STUDIO_CHAT_SYSTEM = `Bạn là trợ lý AI của GU.AI Studio — công cụ tạo/chỉnh ảnh & video thời trang bằng AI.
 
 Các công cụ hiện có trong Studio:
@@ -157,16 +165,24 @@ Các công cụ hiện có trong Studio:
 
 Nhiệm vụ: trả lời ngắn gọn, đúng trọng tâm câu hỏi của user về cách dùng các công cụ trên, cách viết prompt, hoặc nên dùng tool nào cho nhu cầu của họ. Trả lời bằng tiếng Việt (trừ khi user hỏi bằng ngôn ngữ khác), giọng thân thiện, ngắn gọn (tối đa 4-5 câu).
 
-Giới hạn quan trọng: bạn KHÔNG thể tự chạy/thực thi bất kỳ công cụ nào, KHÔNG thể upload/xử lý ảnh hộ user — chỉ hướng dẫn user tự thực hiện trên giao diện Studio. Nếu câu hỏi không liên quan đến GU.AI Studio, lịch sự từ chối và hướng user quay lại chủ đề.`;
+Nếu user gửi kèm ảnh họ đang chuẩn bị dùng cho tác vụ, bạn CÓ THỂ xem và nhận xét/tư vấn dựa trên nội dung ảnh đó (vd. góp ý ảnh có phù hợp với tool không, mô tả ảnh để gợi ý prompt).
+
+Giới hạn quan trọng: bạn KHÔNG thể tự chạy/thực thi bất kỳ công cụ nào, KHÔNG thể tự upload/xử lý ảnh hộ user — chỉ hướng dẫn user tự thực hiện trên giao diện Studio. Nếu câu hỏi không liên quan đến GU.AI Studio, lịch sự từ chối và hướng user quay lại chủ đề.`;
 
 const STUDIO_CHAT_MAX_HISTORY = 12; // giới hạn context gửi lên Gemini mỗi lượt, tránh phình token
 
-export async function studioChat(messages: StudioChatMessage[]): Promise<string> {
+export async function studioChat(messages: StudioChatMessage[], images: StudioChatImage[] = []): Promise<string> {
   const trimmed = messages.slice(-STUDIO_CHAT_MAX_HISTORY);
-  const contents = trimmed.map((m) => ({
-    role: m.role === 'user' ? 'user' : 'model',
-    parts: [{ text: m.content }],
-  }));
+  const lastUserIndex = trimmed.map((m) => m.role).lastIndexOf('user');
+  const contents = trimmed.map((m, i) => {
+    const parts: Record<string, unknown>[] = [{ text: m.content }];
+    if (i === lastUserIndex) {
+      for (const img of images.slice(0, STUDIO_CHAT_MAX_IMAGES)) {
+        parts.push({ inlineData: { mimeType: img.mimeType, data: img.data } });
+      }
+    }
+    return { role: m.role === 'user' ? 'user' : 'model', parts };
+  });
 
   const data = await callGemini({
     systemInstruction: { parts: [{ text: STUDIO_CHAT_SYSTEM }] },
