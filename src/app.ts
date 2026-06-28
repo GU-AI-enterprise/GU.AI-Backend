@@ -17,6 +17,7 @@ import webhookRoutes from './routes/webhook.routes';
 import paymentRoutes from './routes/payment.routes';
 import libraryRoutes from './routes/library.routes';
 import appModelRoutes from './routes/app-model.routes';
+import ecommerceRoutes from './routes/ecommerce.routes';
 import { setupSwagger } from './config/swagger';
 import { globalLimiter, authLimiter } from './middlewares/rateLimit.middleware';
 
@@ -89,6 +90,7 @@ app.use('/api/webhooks', webhookRoutes);
 app.use('/api/payments', paymentRoutes);
 app.use('/api/library', libraryRoutes);
 app.use('/api/models', appModelRoutes);
+app.use('/api/ecommerce', ecommerceRoutes);
 
 // Root
 app.get('/', (_req: Request, res: Response) => {
