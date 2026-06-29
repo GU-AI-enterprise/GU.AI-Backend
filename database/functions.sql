@@ -51,6 +51,16 @@ BEGIN
     provider   = COALESCE(EXCLUDED.provider, public.users.provider),
     updated_at = now();
 
+  -- Quà tặng 20 credit miễn phí cho user mới đăng ký lần đầu (mọi provider) — ghi qua
+  -- credit_ledger (type='bonus') để có audit trail, trg_credit_ledger_apply tự cộng vào
+  -- current_credit. Guard NOT EXISTS để tránh cộng trùng nếu trigger fire lại trên cùng user_id.
+  INSERT INTO public.credit_ledger (user_id, type, amount, balance_after, description)
+  SELECT NEW.id, 'bonus', 20, 0, 'Quà tặng 20 credit cho thành viên mới'
+  WHERE NOT EXISTS (
+    SELECT 1 FROM public.credit_ledger
+    WHERE user_id = NEW.id AND description = 'Quà tặng 20 credit cho thành viên mới'
+  );
+
   RETURN NEW;
 END;
 $function$;
