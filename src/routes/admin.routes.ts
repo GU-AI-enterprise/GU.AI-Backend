@@ -102,6 +102,7 @@ router.get('/reports/jobs', requireStaff, ctrl.getJobAnalytics.bind(ctrl));
 router.get('/reports/revenue', requireStaff, ctrl.getRevenueAnalytics.bind(ctrl));
 router.get('/reports/users', requireStaff, ctrl.getUserAnalytics.bind(ctrl));
 router.get('/reports/credits', requireStaff, ctrl.getCreditAnalytics.bind(ctrl));
+router.get('/reports/top-spenders', requireStaff, ctrl.getTopSpenders.bind(ctrl));
 
 /**
  * @openapi

@@ -504,6 +504,53 @@ export class AdminController {
       sendError(res, 500, err.message);
     }
   }
+
+  // [Dashboard] Top khách hàng chi tiêu nhiều nhất (theo tổng giao dịch thành công)
+  public async getTopSpenders(req: AuthRequest, res: Response): Promise<void> {
+    try {
+      if (!supabaseAdmin) { sendError(res, 500, 'Service role not configured'); return; }
+      const limit = Math.min(50, Math.max(1, parseInt((req.query.limit as string) || '10')));
+
+      const { data, error } = await supabaseAdmin
+        .from('transactions')
+        .select('user_id, amount')
+        .eq('status', 'success');
+      if (error) { sendError(res, 500, error.message); return; }
+
+      const totals = new Map<string, { totalSpent: number; txCount: number }>();
+      (data || []).forEach((tx) => {
+        if (!tx.user_id) return;
+        const entry = totals.get(tx.user_id) ?? { totalSpent: 0, txCount: 0 };
+        entry.totalSpent += Number(tx.amount) || 0;
+        entry.txCount += 1;
+        totals.set(tx.user_id, entry);
+      });
+
+      const topIds = [...totals.entries()]
+        .sort((a, b) => b[1].totalSpent - a[1].totalSpent)
+        .slice(0, limit);
+
+      if (topIds.length === 0) { sendSuccess(res, { data: [] }); return; }
+
+      const { data: users, error: usersError } = await supabaseAdmin
+        .from('users')
+        .select('id, name, email, avatar_url, plan_type')
+        .in('id', topIds.map(([userId]) => userId));
+      if (usersError) { sendError(res, 500, usersError.message); return; }
+
+      const userMap = new Map((users || []).map((u) => [u.id, u]));
+      const result = topIds.map(([userId, stats]) => ({
+        userId,
+        user: userMap.get(userId) ?? null,
+        totalSpent: stats.totalSpent,
+        txCount: stats.txCount,
+      }));
+
+      sendSuccess(res, { data: result });
+    } catch (err: any) {
+      sendError(res, 500, err.message);
+    }
+  }
 }
 
 // ── Helpers cho Analytics ───────────────────────────────────────────────────

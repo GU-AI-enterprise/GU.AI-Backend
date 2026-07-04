@@ -33,10 +33,13 @@ function makeLimiter(windowMs: number, max: number, message: string) {
   });
 }
 
-// 200 req / 15 min – chặn flood toàn cục
+// 1000 req / 15 min – chặn flood toàn cục. Áp dụng trước khi req.user được gán
+// (chạy trước requireAuth ở từng router) nên không thể phân biệt staff/admin ở đây
+// mà không xác thực lại token 2 lần trên mọi request — vì vậy ngưỡng được nới rộng
+// thay vì bypass theo role, để tránh double-auth cho toàn bộ traffic.
 export const globalLimiter = makeLimiter(
   15 * 60 * 1000,
-  200,
+  1000,
   'Quá nhiều yêu cầu. Vui lòng thử lại sau.'
 );
 

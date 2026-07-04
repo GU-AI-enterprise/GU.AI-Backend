@@ -93,13 +93,14 @@ export class SupportController {
       if (messageError) throw messageError;
 
       // Customer opened their chat → mark staff/admin messages as read + notify staff
-      await supabaseAdmin!
+      const { data: updatedOnOpen } = await supabaseAdmin!
         .from('support_messages')
         .update({ is_read: true })
         .eq('conversation_id', conversation.id)
         .neq('sender_type', SenderType.CUSTOMER)
-        .eq('is_read', false);
-      SocketService.emitReadReceipt(conversation.id, 'customer');
+        .eq('is_read', false)
+        .select('id');
+      if ((updatedOnOpen?.length ?? 0) > 0) SocketService.emitReadReceipt(conversation.id, 'customer');
 
       res.status(200).json({ success: true, data: { conversation, messages: messages || [] } });
     } catch (err: any) {
@@ -175,26 +176,31 @@ export class SupportController {
 
       if (error) throw error;
 
-      // Auto mark-read when opening the conversation
+      // Auto mark-read when opening the conversation — only emit the receipt when
+      // something actually changed, otherwise a staff member re-opening an already-read
+      // conversation triggers a read_receipt → client refetch → mark-read → read_receipt
+      // feedback loop (each GET re-emits unconditionally regardless of prior state).
       const isStaff = req.user.role === UserRole.STAFF || req.user.role === UserRole.ADMIN;
       if (isStaff) {
         // Staff opened → mark customer messages as read + notify customer
-        await supabaseAdmin!
+        const { data: updated } = await supabaseAdmin!
           .from('support_messages')
           .update({ is_read: true })
           .eq('conversation_id', conversationId)
           .eq('sender_type', SenderType.CUSTOMER)
-          .eq('is_read', false);
-        SocketService.emitReadReceipt(conversationId, 'staff');
+          .eq('is_read', false)
+          .select('id');
+        if ((updated?.length ?? 0) > 0) SocketService.emitReadReceipt(conversationId, 'staff');
       } else {
         // Customer opened → mark staff messages as read + notify staff
-        await supabaseAdmin!
+        const { data: updated } = await supabaseAdmin!
           .from('support_messages')
           .update({ is_read: true })
           .eq('conversation_id', conversationId)
           .neq('sender_type', SenderType.CUSTOMER)
-          .eq('is_read', false);
-        SocketService.emitReadReceipt(conversationId, 'customer');
+          .eq('is_read', false)
+          .select('id');
+        if ((updated?.length ?? 0) > 0) SocketService.emitReadReceipt(conversationId, 'customer');
       }
 
       res.status(200).json({ success: true, data: { conversation, messages: messages || [] } });
@@ -411,25 +417,27 @@ export class SupportController {
 
         if (!conv) { sendError(res, 404, 'Conversation not found.'); return; }
 
-        await supabaseAdmin!
+        const { data: updated } = await supabaseAdmin!
           .from('support_messages')
           .update({ is_read: true })
           .eq('conversation_id', conversationId)
           .neq('sender_type', SenderType.CUSTOMER)
-          .eq('is_read', false);
+          .eq('is_read', false)
+          .select('id');
 
         // Notify staff that customer has read their messages
-        SocketService.emitReadReceipt(conversationId, 'customer');
+        if ((updated?.length ?? 0) > 0) SocketService.emitReadReceipt(conversationId, 'customer');
       } else {
-        await supabaseAdmin!
+        const { data: updated } = await supabaseAdmin!
           .from('support_messages')
           .update({ is_read: true })
           .eq('conversation_id', conversationId)
           .eq('sender_type', SenderType.CUSTOMER)
-          .eq('is_read', false);
+          .eq('is_read', false)
+          .select('id');
 
         // Notify customer that staff has read their messages
-        SocketService.emitReadReceipt(conversationId, 'staff');
+        if ((updated?.length ?? 0) > 0) SocketService.emitReadReceipt(conversationId, 'staff');
       }
 
       sendSuccess(res, { data: null });
