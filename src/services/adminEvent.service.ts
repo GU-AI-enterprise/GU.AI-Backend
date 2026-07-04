@@ -94,7 +94,7 @@ export class AdminEventService {
    * Query admin events from activity_logs by date with pagination + daily stats.
    */
   static async query(params: {
-    date: string;   // 'YYYY-MM-DD'
+    date: string;   // 'YYYY-MM-DD', or 'all' for every day (paginated, no date filter)
     limit?: number;
     offset?: number;
   }): Promise<AdminEventsResult> {
@@ -105,38 +105,43 @@ export class AdminEventService {
 
     const limit  = params.limit  ?? 20;
     const offset = params.offset ?? 0;
+    const isAll  = params.date === 'all';
 
-    // Day range in Vietnam local time (UTC+7)
-    const dayStart = new Date(params.date + 'T00:00:00.000+07:00');
-    const dayEnd   = new Date(params.date + 'T23:59:59.999+07:00');
+    // Day range in Vietnam local time (UTC+7) — skipped entirely in "all days" mode
+    const dayStart = isAll ? null : new Date(params.date + 'T00:00:00.000+07:00');
+    const dayEnd   = isAll ? null : new Date(params.date + 'T23:59:59.999+07:00');
+
+    function applyDayRange<T>(q: T): T {
+      if (isAll) return q;
+      return (q as any).gte('created_at', dayStart!.toISOString()).lte('created_at', dayEnd!.toISOString());
+    }
 
     // Paginated events
-    const { data: rows, error } = await supabaseAdmin
-      .from('activity_logs')
-      .select('id, user_id, action, target_type, target_id, metadata, created_at')
-      .in('action', TRACKED_ACTIONS)
-      .gte('created_at', dayStart.toISOString())
-      .lte('created_at', dayEnd.toISOString())
-      .order('created_at', { ascending: false })
-      .range(offset, offset + limit - 1);
+    const { data: rows, error } = await applyDayRange(
+      supabaseAdmin
+        .from('activity_logs')
+        .select('id, user_id, action, target_type, target_id, metadata, created_at')
+        .in('action', TRACKED_ACTIONS)
+        .order('created_at', { ascending: false })
+    ).range(offset, offset + limit - 1);
 
     if (error) throw new Error(`AdminEvent query failed: ${error.message}`);
 
-    // Total count for the day
-    const { count } = await supabaseAdmin
-      .from('activity_logs')
-      .select('id', { count: 'exact', head: true })
-      .in('action', TRACKED_ACTIONS)
-      .gte('created_at', dayStart.toISOString())
-      .lte('created_at', dayEnd.toISOString());
+    // Total count (for the day, or overall in "all" mode)
+    const { count } = await applyDayRange(
+      supabaseAdmin
+        .from('activity_logs')
+        .select('id', { count: 'exact', head: true })
+        .in('action', TRACKED_ACTIONS)
+    );
 
     // Per-type counts
-    const { data: typeCounts } = await supabaseAdmin
-      .from('activity_logs')
-      .select('action')
-      .in('action', TRACKED_ACTIONS)
-      .gte('created_at', dayStart.toISOString())
-      .lte('created_at', dayEnd.toISOString());
+    const { data: typeCounts } = await applyDayRange(
+      supabaseAdmin
+        .from('activity_logs')
+        .select('action')
+        .in('action', TRACKED_ACTIONS)
+    );
 
     const stats: AdminEventStats = {
       total:         count ?? 0,
