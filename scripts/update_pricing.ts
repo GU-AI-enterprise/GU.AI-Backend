@@ -31,9 +31,8 @@ async function updatePricing() {
     const { error: insError } = await supabase
       .from('credit_packages')
       .insert([
-        { name: 'Starter', price: 249000, credit_amount: 100, bonus_credit: 0, is_active: true, sort_order: 1, grants_plan_type: 'basic' },
-        { name: 'Gói Cơ Bản', price: 449000, credit_amount: 200, bonus_credit: 0, is_active: true, sort_order: 2, grants_plan_type: 'pro' },
-        { name: 'Gói Chuyên Nghiệp', price: 990000, credit_amount: 500, bonus_credit: 0, is_active: true, sort_order: 3, grants_plan_type: 'agency' }
+        { name: 'Starter', price: 199000, credit_amount: 100, bonus_credit: 0, is_active: true, sort_order: 1, grants_plan_type: 'basic' },
+        { name: 'Gói Cơ Bản', price: 349000, credit_amount: 200, bonus_credit: 0, is_active: true, sort_order: 2, grants_plan_type: 'pro' }
       ]);
 
     if (insError) {
