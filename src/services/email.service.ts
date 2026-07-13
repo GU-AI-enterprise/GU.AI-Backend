@@ -191,49 +191,6 @@ function billBody(opts: {
   </tr>`);
 }
 
-function verificationBody(name: string, confirmationLink: string): string {
-  const displayName = name || 'bạn';
-  return baseLayout(`
-  <tr>
-    <td style="padding:40px 40px 32px;text-align:center;">
-      <!-- Icon -->
-      <div style="display:inline-flex;align-items:center;justify-content:center;width:64px;height:64px;background:#f9f7ff;border-radius:50%;margin-bottom:24px;">
-        <span style="font-size:30px;">✉️</span>
-      </div>
-
-      <h1 style="margin:0 0 10px;font-size:24px;font-weight:700;color:#0f0f0f;letter-spacing:-0.3px;">
-        Xác nhận địa chỉ email
-      </h1>
-      <p style="margin:0 0 28px;font-size:14px;color:#666;line-height:1.7;max-width:380px;margin-left:auto;margin-right:auto;">
-        Xin chào <strong>${displayName}</strong>,<br/>
-        Bạn đã đăng ký tài khoản GU.AI. Nhấn nút bên dưới để xác nhận email và bắt đầu sử dụng dịch vụ.
-      </p>
-
-      <!-- CTA Button -->
-      <div style="margin:0 0 28px;">
-        <a href="${confirmationLink}"
-           style="display:inline-block;background:linear-gradient(135deg,#7c3aed,#a78bfa);color:#ffffff;text-decoration:none;font-size:15px;font-weight:700;padding:16px 44px;border-radius:12px;letter-spacing:0.2px;">
-          Xác nhận Email
-        </a>
-      </div>
-
-      <!-- Warning -->
-      <div style="background:#fffbeb;border:1.5px solid #fde68a;border-radius:10px;padding:14px 20px;margin-bottom:20px;text-align:left;">
-        <p style="margin:0;font-size:12px;color:#92400e;line-height:1.6;">
-          ⚠️ <strong>Lưu ý:</strong> Link xác nhận có hiệu lực trong <strong>24 giờ</strong>.
-          Nếu bạn không đăng ký tài khoản này, hãy bỏ qua email này.
-        </p>
-      </div>
-
-      <!-- Fallback link -->
-      <p style="margin:0;font-size:11px;color:#aaa;line-height:1.6;">
-        Nếu nút không hoạt động, copy và dán link sau vào trình duyệt:<br/>
-        <span style="color:#7c3aed;word-break:break-all;font-size:11px;">${confirmationLink}</span>
-      </p>
-    </td>
-  </tr>`);
-}
-
 export interface PaymentBillOptions {
   to: string;
   name: string;
@@ -247,19 +204,6 @@ export interface PaymentBillOptions {
 }
 
 export class EmailService {
-  static async sendVerificationEmail(to: string, name: string, confirmationLink: string): Promise<void> {
-    try {
-      await resend.emails.send({
-        from: FROM,
-        to: [to],
-        subject: 'Xác nhận email của bạn — GU.AI',
-        html: verificationBody(name, confirmationLink),
-      });
-    } catch (err: any) {
-      console.error('[EmailService] sendVerificationEmail failed:', err.message);
-    }
-  }
-
   static async sendWelcomeEmail(to: string, name: string): Promise<void> {
     try {
       await resend.emails.send({
