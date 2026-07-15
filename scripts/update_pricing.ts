@@ -20,7 +20,7 @@ async function updatePricing() {
     const { error: delError } = await supabase
       .from('credit_packages')
       .delete()
-      .in('sort_order', [1, 2, 3]);
+      .in('sort_order', [0, 1, 2, 3]);
 
     if (delError) {
       console.error("Lỗi xóa gói cũ:", delError);
@@ -31,8 +31,9 @@ async function updatePricing() {
     const { error: insError } = await supabase
       .from('credit_packages')
       .insert([
-        { name: 'Starter', price: 199000, credit_amount: 100, bonus_credit: 0, is_active: true, sort_order: 1, grants_plan_type: 'basic' },
-        { name: 'Gói Cơ Bản', price: 349000, credit_amount: 200, bonus_credit: 0, is_active: true, sort_order: 2, grants_plan_type: 'pro' }
+        { name: 'Dùng Thử', price: 0, credit_amount: 20, bonus_credit: 0, is_active: true, sort_order: 0, grants_plan_type: 'free', description: { ai_assistant: false, models_unlocked: 4 } },
+        { name: 'Starter', price: 199000, credit_amount: 100, bonus_credit: 0, is_active: true, sort_order: 1, grants_plan_type: 'basic', description: { ai_assistant: true, models_unlocked: 9 } },
+        { name: 'Gói Cơ Bản', price: 349000, credit_amount: 200, bonus_credit: 0, is_active: true, sort_order: 2, grants_plan_type: 'pro', description: { ai_assistant: true, models_unlocked: 'all' } }
       ]);
 
     if (insError) {

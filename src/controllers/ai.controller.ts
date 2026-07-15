@@ -933,8 +933,8 @@ export class AIController {
       if (!tool?.trim()) { sendError(res, 400, 'tool là bắt buộc'); return; }
 
       const image = await this.resolveOptionalImage(req);
-      const prompt = await suggestPromptService({ tool: tool.trim(), userHint: userHint ?? '', image: image ?? undefined });
-      sendSuccess(res, { data: { prompt } });
+      const { prompt, explanation } = await suggestPromptService({ tool: tool.trim(), userHint: userHint ?? '', image: image ?? undefined });
+      sendSuccess(res, { data: { prompt, explanation } });
     } catch (err: any) {
       console.error('[AIController.suggestPrompt]', err.message);
       sendError(res, 500, err.message);

@@ -39,13 +39,22 @@ function inlineImagePart(image: { buffer: Buffer; mimeType: string }) {
 
 const SUGGEST_PROMPT_SYSTEM = `Bạn là chuyên gia viết prompt tiếng Anh cho công cụ AI tạo/chỉnh ảnh thời trang.
 
-Nhiệm vụ: dựa vào tool đang dùng, ý tưởng ngắn (có thể bằng tiếng Việt) của user, và ảnh tham chiếu nếu có, viết lại thành 1 prompt tiếng Anh chuyên nghiệp, súc tích (1-2 câu, tối đa ~40 từ).
+Nhiệm vụ: dựa vào tool đang dùng, ý tưởng ngắn (có thể bằng tiếng Việt) của user, và ảnh tham chiếu nếu có, viết thành 1 prompt tiếng Anh chuyên nghiệp, súc tích (1-2 câu, tối đa ~40 từ), kèm 1 lời giải thích ngắn bằng tiếng Việt.
 
-Quy tắc:
-- Mô tả đầy đủ chi tiết liên quan: đặc điểm người mẫu (giới tính, dáng người, sắc tộc nếu được nêu), trang phục, tư thế, background, ánh sáng — bất kỳ chi tiết nào user đề cập.
-- Nếu có ảnh kèm theo: quan sát kỹ màu sắc, kiểu dáng, chi tiết thực tế trong ảnh (trang phục, bối cảnh, người mẫu) và đưa vào prompt để mô tả chính xác hơn — không bịa chi tiết không thấy trong ảnh.
+Quy tắc viết prompt:
+- Mô tả đầy đủ chi tiết liên quan: đặc điểm người mẫu (giới tính, dáng người, sắc tộc nếu được nêu), tư thế, background, ánh sáng — bất kỳ chi tiết nào user đề cập.
+- QUAN TRỌNG — với các tool mà trang phục được lấy trực tiếp từ ảnh đầu vào (try_on, try_on_max, product_to_model, model_swap): TUYỆT ĐỐI KHÔNG miêu tả trang phục/quần áo/phụ kiện đang mặc trong prompt, kể cả trang phục nhìn thấy trong ảnh tham chiếu. Engine sẽ hiểu miêu tả đó là "giữ nguyên đồ này" và KHÔNG thay đồ. Chỉ miêu tả người mẫu, tư thế, bối cảnh, ánh sáng.
+- Với các tool còn lại (create_model, edit, image_to_video...): được phép miêu tả trang phục nếu user muốn.
+- Nếu có ảnh kèm theo: quan sát kỹ chi tiết thực tế trong ảnh (người mẫu, bối cảnh, ánh sáng — và trang phục CHỈ khi tool cho phép) để mô tả chính xác hơn — không bịa chi tiết không thấy trong ảnh.
 - Nếu user không cho ý tưởng cụ thể và không có ảnh: tự đề xuất 1 prompt mẫu hợp lý cho loại tool đó.
-- CHỈ trả về đúng nội dung prompt tiếng Anh, KHÔNG giải thích, KHÔNG markdown, KHÔNG đặt trong dấu ngoặc kép.`;
+
+Quy tắc giải thích (explanation):
+- Viết bằng tiếng Việt, 1-2 câu, thân thiện.
+- Giải thích VÌ SAO gợi ý như vậy, dựa trên chi tiết cụ thể quan sát được trong ảnh (nếu có) và ý tưởng user đưa ra — vd. "Ảnh của bạn là người mẫu nữ đứng trong studio nền xám nên mình gợi ý giữ ánh sáng studio và thêm tư thế tự nhiên hơn."
+- Nếu tool thuộc nhóm thay trang phục, nhắc user ngắn gọn rằng prompt không miêu tả trang phục vì đồ sẽ lấy từ ảnh sản phẩm/trang phục đầu vào.`;
+
+/** Tool mà trang phục lấy từ ảnh đầu vào — prompt miêu tả đồ sẽ khiến Fashn không thay đồ. */
+const GARMENT_LOCKED_TOOLS = new Set(['try_on', 'try_on_max', 'product_to_model', 'model_swap']);
 
 export interface SuggestPromptInput {
   tool: string;
@@ -53,18 +62,27 @@ export interface SuggestPromptInput {
   image?: { buffer: Buffer; mimeType: string };
 }
 
-const suggestPromptInFlight = new Map<string, Promise<string>>();
+export interface SuggestPromptResult {
+  prompt: string;
+  /** Giải thích tiếng Việt: vì sao gợi ý như vậy, dựa trên ảnh/ý tưởng — hiển thị cho user. */
+  explanation: string;
+}
 
-export async function suggestPrompt({ tool, userHint, image }: SuggestPromptInput): Promise<string> {
+const suggestPromptInFlight = new Map<string, Promise<SuggestPromptResult>>();
+
+export async function suggestPrompt({ tool, userHint, image }: SuggestPromptInput): Promise<SuggestPromptResult> {
   const key = `${tool}|${userHint.trim()}|${image ? hash(image.buffer) : ''}`;
 
   const existing = suggestPromptInFlight.get(key);
   if (existing) return existing;
 
   const task = (async () => {
-    const userText = userHint.trim()
+    let userText = userHint.trim()
       ? `Tool: ${tool}\nÝ tưởng của user: ${userHint.trim()}`
       : `Tool: ${tool}\nUser chưa có ý tưởng cụ thể — hãy tự đề xuất 1 prompt mẫu phù hợp.`;
+    if (GARMENT_LOCKED_TOOLS.has(tool)) {
+      userText += `\nLƯU Ý: tool này thay trang phục từ ảnh đầu vào — prompt KHÔNG được miêu tả trang phục.`;
+    }
 
     const parts: Record<string, unknown>[] = [{ text: userText }];
     if (image) parts.push(inlineImagePart(image));
@@ -75,11 +93,33 @@ export async function suggestPrompt({ tool, userHint, image }: SuggestPromptInpu
       // thinkingBudget: 0 — tắt "thinking" của Gemini 2.5 Flash. Task này không cần suy luận sâu,
       // và nếu không tắt, token thinking sẽ ăn vào chung ngân sách maxOutputTokens khiến câu trả lời
       // bị cắt cụt giữa câu (đã gặp thực tế: "A beautiful Asian woman wearing a pink" — hết token).
-      generationConfig: { temperature: 0.6, maxOutputTokens: 200, thinkingConfig: { thinkingBudget: 0 } },
+      generationConfig: {
+        temperature: 0.6,
+        maxOutputTokens: 400,
+        thinkingConfig: { thinkingBudget: 0 },
+        responseMimeType: 'application/json',
+        responseSchema: {
+          type: 'OBJECT',
+          properties: {
+            prompt: { type: 'STRING' },
+            explanation: { type: 'STRING' },
+          },
+          required: ['prompt', 'explanation'],
+        },
+      },
     });
 
     const text: string = data.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
-    return text.trim().replace(/^["']|["']$/g, '');
+    try {
+      const parsed = JSON.parse(text);
+      return {
+        prompt: String(parsed.prompt ?? '').trim().replace(/^["']|["']$/g, ''),
+        explanation: String(parsed.explanation ?? '').trim(),
+      };
+    } catch {
+      // responseSchema đã ép format nên hiếm khi parse lỗi — fallback coi toàn bộ text là prompt.
+      return { prompt: text.trim().replace(/^["']|["']$/g, ''), explanation: '' };
+    }
   })();
 
   suggestPromptInFlight.set(key, task);
@@ -165,7 +205,9 @@ Các công cụ hiện có trong Studio:
 
 Nhiệm vụ: trả lời ngắn gọn, đúng trọng tâm câu hỏi của user về cách dùng các công cụ trên, cách viết prompt, hoặc nên dùng tool nào cho nhu cầu của họ. Trả lời bằng tiếng Việt (trừ khi user hỏi bằng ngôn ngữ khác), giọng thân thiện, ngắn gọn (tối đa 4-5 câu).
 
-Nếu user gửi kèm ảnh họ đang chuẩn bị dùng cho tác vụ, bạn CÓ THỂ xem và nhận xét/tư vấn dựa trên nội dung ảnh đó (vd. góp ý ảnh có phù hợp với tool không, mô tả ảnh để gợi ý prompt).
+Nếu user gửi kèm ảnh họ đang chuẩn bị dùng cho tác vụ, bạn CÓ THỂ xem và nhận xét/tư vấn dựa trên nội dung ảnh đó (vd. góp ý ảnh có phù hợp với tool không, mô tả ảnh để gợi ý prompt). Khi đưa ra gợi ý hoặc lựa chọn (chọn tool nào, viết prompt gì) dựa trên ảnh, LUÔN giải thích ngắn gọn lý do dựa trên chi tiết cụ thể quan sát được trong ảnh — vd. "ảnh của bạn là ảnh sản phẩm nền trắng nên phù hợp với Product to Model".
+
+Lưu ý khi gợi ý prompt cho các tool thay trang phục (Virtual Try-On, Try-On Max, Product to Model, Model Swap): prompt KHÔNG được miêu tả trang phục/quần áo — trang phục lấy trực tiếp từ ảnh đầu vào, miêu tả đồ trong prompt sẽ khiến engine giữ nguyên đồ cũ và không thay đồ. Chỉ miêu tả người mẫu, tư thế, bối cảnh, ánh sáng; nhắc user điều này khi liên quan.
 
 Giới hạn quan trọng: bạn KHÔNG thể tự chạy/thực thi bất kỳ công cụ nào, KHÔNG thể tự upload/xử lý ảnh hộ user — chỉ hướng dẫn user tự thực hiện trên giao diện Studio. Nếu câu hỏi không liên quan đến GU.AI Studio, lịch sự từ chối và hướng user quay lại chủ đề.`;
 

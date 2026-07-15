@@ -2,6 +2,7 @@ import { Router } from 'express';
 import multer from 'multer';
 import { aiController } from '../controllers/ai.controller';
 import { requireAuth } from '../middlewares/auth.middleware';
+import { requirePlan } from '../middlewares/plan.middleware';
 import { aiLimiter, assistLimiter, staffBypass } from '../middlewares/rateLimit.middleware';
 
 const router = Router();
@@ -114,11 +115,12 @@ router.post(
  * @openapi
  * /api/ai/studio-chat:
  *   post:
- *     summary: Trợ lý AI hỏi-đáp trong Studio (tác vụ phụ, không trừ credit)
+ *     summary: Trợ lý AI hỏi-đáp trong Studio (tác vụ phụ, không trừ credit, cần gói Basic trở lên)
  *     description: |
  *       Chat hỏi-đáp về cách dùng các công cụ trong Studio / cách viết prompt.
  *       KHÔNG lập plan, KHÔNG tự chạy tool nào, KHÔNG lưu hội thoại ở server —
  *       client tự giữ history và gửi kèm toàn bộ messages mỗi lượt gọi.
+ *       Chỉ dành cho user gói Basic trở lên (staff/admin không bị giới hạn).
  *     tags:
  *       - AI
  *     security:
@@ -150,6 +152,7 @@ router.post(
  */
 router.post(
   '/studio-chat',
+  requirePlan('basic'),
   staffBypass(assistLimiter),
   aiController.studioChat.bind(aiController)
 );

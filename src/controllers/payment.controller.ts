@@ -105,7 +105,7 @@ export class PaymentController {
     try {
       const { data, error } = await supabaseAdmin!
         .from('credit_packages')
-        .select('id, name, price, credit_amount, bonus_credit, sort_order, grants_plan_type')
+        .select('id, name, price, credit_amount, bonus_credit, sort_order, grants_plan_type, description')
         .eq('is_active', true)
         .order('sort_order', { ascending: true });
       if (error) throw error;
