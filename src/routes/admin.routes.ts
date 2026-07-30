@@ -2,6 +2,7 @@ import { Router } from 'express';
 import multer from 'multer';
 import { AdminController } from '../controllers/admin.controller';
 import { AppModelController } from '../controllers/app-model.controller';
+import { PackageController } from '../controllers/package.controller';
 import { requireAuth, requireAdmin, requireStaff } from '../middlewares/auth.middleware';
 import { AdminEventService } from '../services/adminEvent.service';
 import { ImageService } from '../services/image.service';
@@ -13,6 +14,7 @@ import { supabaseAdmin } from '../config/supabase';
 const router = Router();
 const ctrl = new AdminController();
 const modelCtrl = new AppModelController();
+const packageCtrl = new PackageController();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 } });
 
 router.use(requireAuth);
@@ -620,5 +622,11 @@ router.post('/models', requireAdmin, upload.fields([{ name: 'image', maxCount: 1
 router.put('/models/:id', requireAdmin, upload.fields([{ name: 'image', maxCount: 1 }]), modelCtrl.adminUpdate.bind(modelCtrl));
 router.delete('/models/:id', requireAdmin, modelCtrl.adminDelete.bind(modelCtrl));
 router.patch('/models/reorder', requireAdmin, modelCtrl.adminReorder.bind(modelCtrl));
+
+// ── Gói credit (staff + admin đều quản lý được) ───────────────────────────────
+router.get('/packages',     requireStaff, packageCtrl.adminList.bind(packageCtrl));
+router.post('/packages',    requireStaff, packageCtrl.adminCreate.bind(packageCtrl));
+router.put('/packages/:id', requireStaff, packageCtrl.adminUpdate.bind(packageCtrl));
+router.delete('/packages/:id', requireStaff, packageCtrl.adminDelete.bind(packageCtrl));
 
 export default router;
